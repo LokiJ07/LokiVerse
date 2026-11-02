@@ -1,8 +1,8 @@
 {
   "name": "lokiverse",
   "productName": "LokiVerse",
-  "version": "0.6.0",
-  "description": "LokiVerse \u2014 offline-first desktop productivity, secure local LokiShare, smart LAN discovery, transfer alerts and improved file management.",
+  "version": "0.7.0",
+  "description": "LokiVerse — offline-first productivity, secure local sharing, safe file copying, resumable phone downloads, and Android release-signing support.",
   "author": "LokiJ",
   "license": "MIT",
   "private": true,
@@ -22,7 +22,7 @@
   "build": {
     "appId": "com.lokij.lokiverse",
     "productName": "LokiVerse",
-    "copyright": "Copyright \u00a9 2026 LokiJ",
+    "copyright": "Copyright © 2026 LokiJ",
     "asar": true,
     "directories": {
       "output": "release"

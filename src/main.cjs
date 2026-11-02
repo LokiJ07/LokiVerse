@@ -181,6 +181,7 @@ function registerHandlers() {
   });
   safeHandle('files:createFolder', async (relative, name) => { if (!selectedRoot) throw new Error('Choose a folder first.'); return createFileOps(selectedRoot).createFolder(relative, name); });
   safeHandle('files:rename', async (relative, name) => { if (!selectedRoot) throw new Error('Choose a folder first.'); return createFileOps(selectedRoot).rename(relative, name); });
+  safeHandle('files:copy', async (relative, destination) => { if (!selectedRoot) throw new Error('Choose a folder first.'); return createFileOps(selectedRoot).copyFile(relative, destination); });
   safeHandle('files:scan', async options => {
     if (!selectedRoot) throw new Error('Choose a folder first.');
     return createFileOps(selectedRoot).scan(options);

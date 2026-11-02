@@ -1,30 +1,33 @@
-# LokiVerse v0.6.0 — Test Checklist
+# LokiVerse v0.7.0 — QA Checklist
 
-## CI and release
+## GitHub Actions
 
-- [ ] `npm run check` passes locally (includes protocol/discovery tests).
-- [ ] GitHub Actions Windows + Android jobs both green.
-- [ ] `v0.6.0` tag matches both `package.json` and Android `versionName`.
-- [ ] Both release assets and checksums appear in GitHub Releases.
-- [ ] No private signing credentials, user data or session QR values in the repository.
+- [ ] `npm run check` passes; new HTTPS range, copy and existing security tests stay green.
+- [ ] Windows `verify-and-build` passes on Windows runner.
+- [ ] Android `android-companion` builds and executes JUnit tests on Linux runner.
+- [ ] Release tag `v0.7.0` matches Windows version and Android `versionName`; Android `versionCode` is 9.
+- [ ] Both default assets and SHA256 checksums are attached to GitHub Release.
+- [ ] Optional signed APK is present **only** when all signing secrets are configured; signing cert fingerprint matches prior signed versions.
 
-## Windows regression
+## Windows & file safety
 
-- [ ] Export a backup from installed v0.5.0; install v0.6.0 over it without uninstalling.
-- [ ] Original tasks, notes, themes and files remain.
-- [ ] LokiFiles search, create folder, rename, duplicate detection and Details work.
-- [ ] Files outside the selected root remain inaccessible.
-- [ ] Transfer Center history is preserved, pending approvals, revoke, cancellation function.
-- [ ] Start/stop sharing cleanly, repeat without stale sockets.
-- [ ] Windows shows transfer-complete notice when backgrounded (if allowed by OS).
+- [ ] Existing app upgraded **over** v0.6.0, not manually uninstalled; notes/tasks/settings retained.
+- [ ] LokiFiles copy prompts for destination; copies only ordinary files to **existing** folders within selected root.
+- [ ] Copy refuses outside-root paths and links escaping it; existing destinations are never overwritten.
+- [ ] HTTPS QR pairing, PC approval, session revoke, transfer cancellation and history work.
+- [ ] Range download returns 206 and correct `Content-Range` and ETag; invalid range returns 416; request without session returns 401.
 
-## Android / network
+## Android & real Wi-Fi
 
-- [ ] APK builds; launch works; scanner does not force stop (check Logcat if it does).
-- [ ] Optional Nearby Scan finds host on supported LAN. If no host, QR still works.
-- [ ] A discovered host is NOT auto trusted: QR and six-digit Windows approval still required.
-- [ ] Android 13+ transfer-alert permission is optional and transfer still works if denied.
-- [ ] Android upload/download progress, speed, completed notices and Cancel work.
-- [ ] Phone remains open for transfer; no claims of background service or resume.
-- [ ] Firewall/private Wi-Fi limitations documented and tested.
-- [ ] Old TEST APK update may fail due to changed debug signing key; not a regression in Windows installer.
+- [ ] v0.7.0 APK installs and launches; QR scanner opens without force stopping on target phone.
+- [ ] A PC host is never trusted from discovery alone; QR + fingerprint + six digits + Windows approval required.
+- [ ] Download a large file and briefly interrupt Wi-Fi during transfer. If Wi-Fi reconnects within limited retry window, verify resulting checksum is identical.
+- [ ] No partial result is published from an incomplete network transfer; current operation may fail with explanatory message after exhausted retries.
+- [ ] Transfer cancellation behaves predictably. Phone needs enough spare cache space to stage entire file.
+- [ ] Verify connection-loss banner after two failed connection checks; new approval still required when session expires.
+- [ ] If changing from debug-signed TEST APK to first signed APK, uninstalling the TEST app once may be required; future signed upgrades need the **same** key and increasing versionCode.
+
+## Not changed
+
+- [ ] Windows SmartScreen might still show Unknown Publisher: no Windows signing solution was implemented.
+- [ ] Resuming downloads after a full Android app restart and resumable uploads are **not implemented**.

@@ -47,7 +47,7 @@ public final class MainActivity extends ComponentActivity {
     private PinnedClient client;
     private String downloadID,downloadName;
     private boolean active=false, waiting=false;
-    private LinearLayout base, fileList, recentList;
+    private LinearLayout base, section, fileList, recentList;
     private ProgressBar transferProgress;
     private Button cancelTransfer;
     private TransferCancellation currentTransfer;
@@ -57,8 +57,34 @@ public final class MainActivity extends ComponentActivity {
     private TextView nearbyResults;
     private Button nearbyButton, notificationButton;
     private int notificationIndex=100;
+    private int missedHealthChecks=0;
     private TextView status, detail, match;
     private Button pairButton,sendButton,refreshButton;
+    private final Runnable connectionHealth=new Runnable(){
+        @Override public void run(){
+            if(!active || client==null || isFinishing())return;
+            if(transferBusy || waiting){handler.postDelayed(this,20000);return;}
+            final PinnedClient checkedClient=client;
+            runAsync(()->checkedClient.status(),reply->{
+                if(checkedClient!=client || !active)return;
+                missedHealthChecks=0;
+                handler.postDelayed(this,20000);
+            },error->{
+                if(checkedClient!=client || !active)return;
+                missedHealthChecks++;
+                if(missedHealthChecks<2){
+                    status.setText("● Connection check delayed — checking again…");
+                    handler.postDelayed(this,5000);
+                    return;
+                }
+                active=false;waiting=false;
+                sendButton.setEnabled(false);refreshButton.setEnabled(false);
+                status.setText("● Connection lost — rescan the PC QR or request new approval.");
+                pairButton.setEnabled(client!=null);
+                match.setText("Your PC may have restarted or the session expired. Secure verification is required again.");
+            });
+        }
+    };
     // Lifecycle-aware scanner result handling. No deprecated IntentIntegrator request code.
     private final ActivityResultLauncher<ScanOptions> scanLauncher =
         registerForActivityResult(new ScanContract(), result -> {
@@ -94,7 +120,7 @@ public final class MainActivity extends ComponentActivity {
         @Override public void run(){
             if(!waiting||client==null)return;
             runAsync(()->client.poll(),value->{
-                if("approved".equals(value)){waiting=false;active=true;status.setText("● Securely connected");match.setText("Approved by Windows. TLS certificate verified.");refresh();}
+                if("approved".equals(value)){waiting=false;active=true;missedHealthChecks=0;status.setText("● Securely connected");match.setText("Approved by Windows. TLS certificate verified.");handler.removeCallbacks(connectionHealth);handler.postDelayed(connectionHealth,20000);refresh();}
                 else if("rejected".equals(value)){waiting=false;match.setText("Request declined by Windows.");pairButton.setEnabled(true);}
                 else handler.postDelayed(this,1600);
             },error->{waiting=false;pairButton.setEnabled(true);showError(error);});
@@ -117,8 +143,29 @@ public final class MainActivity extends ComponentActivity {
     }
     private GradientDrawable background(int color){GradientDrawable d=new GradientDrawable();d.setColor(color);d.setCornerRadius(dp(15));return d;}
     private TextView text(String value,int size,int color){TextView t=new TextView(this);t.setText(value);t.setTextSize(size);t.setTextColor(color);t.setPadding(0,dp(6),0,dp(6));return t;}
-    private void block(View view){LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(13);base.addView(view,p);}
-    private Button button(String label){Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextColor(Color.WHITE);b.setBackground(background(Color.rgb(79,52,169)));return b;}
+    private void block(View view){
+        LinearLayout.LayoutParams p=new LinearLayout.LayoutParams(-1,-2);p.bottomMargin=dp(12);
+        (section==null?base:section).addView(view,p);
+    }
+    private void beginCard(String eyebrow,String title){
+        section=new LinearLayout(this);section.setOrientation(LinearLayout.VERTICAL);
+        section.setPadding(dp(18),dp(16),dp(18),dp(14));
+        GradientDrawable card=new GradientDrawable(GradientDrawable.Orientation.TL_BR,
+            new int[]{Color.rgb(30,31,59),Color.rgb(19,22,43)});
+        card.setCornerRadius(dp(20));card.setStroke(dp(1),Color.rgb(66,63,111));
+        section.setBackground(card);
+        LinearLayout.LayoutParams container=new LinearLayout.LayoutParams(-1,-2);container.bottomMargin=dp(18);
+        base.addView(section,container);
+        block(text(eyebrow.toUpperCase(java.util.Locale.ROOT),11,Color.rgb(144,232,217)));
+        TextView head=text(title,20,Color.WHITE);head.setTypeface(null,Typeface.BOLD);block(head);
+    }
+    private void endCard(){section=null;}
+    private Button button(String label){
+        Button b=new Button(this);b.setText(label);b.setAllCaps(false);b.setTextColor(Color.WHITE);
+        GradientDrawable gradient=new GradientDrawable(GradientDrawable.Orientation.LEFT_RIGHT,
+            new int[]{Color.rgb(105,60,198),Color.rgb(67,107,180)});
+        gradient.setCornerRadius(dp(13));b.setBackground(gradient);b.setMinHeight(dp(48));return b;
+    }
     private void render(){
         getWindow().setStatusBarColor(Color.rgb(10,11,24));getWindow().setNavigationBarColor(Color.rgb(10,11,24));
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(Color.rgb(11,12,26));
@@ -128,7 +175,7 @@ public final class MainActivity extends ComponentActivity {
         TextView securityHint=text("● LOCAL WI-FI  ·  HTTPS PINNING  ·  PC APPROVAL",12,Color.rgb(132,226,204));
         securityHint.setBackground(background(Color.rgb(27,44,53)));
         securityHint.setPadding(dp(12),dp(9),dp(12),dp(9));block(securityHint);
-        block(text("① Connect securely",20,Color.WHITE));
+        beginCard("01 · Trusted connection","Connect to your PC");
         nearbyButton=button("⌁ Find nearby LokiVerse PCs");block(nearbyButton);
         nearbyResults=text("Optional discovery: find PCs on the same Wi-Fi. Scan the PC's QR to verify its identity.",13,Color.rgb(172,167,213));
         nearbyResults.setBackground(background(Color.rgb(28,30,52)));
@@ -145,24 +192,30 @@ public final class MainActivity extends ComponentActivity {
         notificationButton=button("Enable transfer notifications");block(notificationButton);
         notificationButton.setOnClickListener(v->askNotifications());
         if(canNotify())notificationButton.setText("✓ Transfer notifications enabled");
-        block(text("② Send to Windows",20,Color.WHITE));
+        endCard();
+        beginCard("02 · Send","Phone → Windows");
         sendButton=button("Select files to send");block(sendButton);sendButton.setEnabled(false);
         sendButton.setOnClickListener(v->{if(transferBusy)return;Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);pick.setType("*/*");pick.addCategory(Intent.CATEGORY_OPENABLE);pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);startActivityForResult(pick,REQUEST_SEND);});
-        block(text("③ Download from Windows",20,Color.WHITE));
+        endCard();
+        beginCard("03 · Receive","Windows → Phone");
         refreshButton=button("Refresh shared files");block(refreshButton);refreshButton.setEnabled(false);refreshButton.setOnClickListener(v->refresh());
         fileList=new LinearLayout(this);fileList.setOrientation(LinearLayout.VERTICAL);block(fileList);
-        block(text("④ Transfer progress",20,Color.WHITE));
+        block(text("Interrupted downloads automatically resume twice while LokiShare stays open.",12,Color.rgb(166,197,228)));
+        endCard();
+        beginCard("04 · Live activity","Transfer progress");
         transferProgress=new ProgressBar(this,null,android.R.attr.progressBarStyleHorizontal);
         transferProgress.setMax(100);transferProgress.setProgressTintList(ColorStateList.valueOf(Color.rgb(129,99,243)));
         block(transferProgress);
         cancelTransfer=button("Cancel active transfer");cancelTransfer.setEnabled(false);block(cancelTransfer);
         cancelTransfer.setOnClickListener(v->{if(currentTransfer!=null){currentTransfer.cancel();detail.setText("Cancelling transfer…");cancelTransfer.setEnabled(false);}});
-        block(text("⑤ Recent activity · saved on this phone",20,Color.WHITE));
+        endCard();
+        beginCard("05 · On-device history","Recent activity");
         Button clear=button("Clear phone activity");block(clear);
         recentList=new LinearLayout(this);recentList.setOrientation(LinearLayout.VERTICAL);block(recentList);
         clear.setOnClickListener(v->{getPreferences(MODE_PRIVATE).edit().remove("transfer_history_v1").apply();renderRecent();});
         renderRecent();
-        block(text("Use private Wi-Fi. Every connection is approved by the PC. No files are shared unless you choose them.",12,Color.rgb(157,156,182)));
+        endCard();
+        block(text("PRIVATE BY DESIGN  ·  Use a trusted Wi-Fi network. Each PC session requires QR fingerprint verification and approval.",12,Color.rgb(157,156,182)));
     }
     private void startNearbyScan(){
         if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)!=PackageManager.PERMISSION_GRANTED){
@@ -240,11 +293,12 @@ public final class MainActivity extends ComponentActivity {
         try {
             client=new PinnedClient(PairingInput.validate(inviteInput.getText().toString()));active=false;waiting=false;
             pairButton.setEnabled(true);sendButton.setEnabled(false);refreshButton.setEnabled(false);
+            handler.removeCallbacks(connectionHealth);missedHealthChecks=0;
             status.setText("✓ QR validated — ready to request pairing");
             match.setText("PC: "+client.address()+"\nCertificate fingerprint pinned from QR.");
         } catch(Exception e){showError(e);pairButton.setEnabled(false);client=null;}
     }
-    private void requestPair(){if(client==null)return;pairButton.setEnabled(false);status.setText("Requesting approval…");
+    private void requestPair(){if(client==null)return;handler.removeCallbacks(connectionHealth);pairButton.setEnabled(false);status.setText("Requesting approval…");
         runAsync(()->client.requestPair(),code->{waiting=true;match.setText("MATCH ON WINDOWS: "+code);status.setText("Waiting for Windows approval…");handler.postDelayed(pollTask,1500);},error->{pairButton.setEnabled(true);showError(error);});
     }
     private void beginTransfer() {

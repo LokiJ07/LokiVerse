@@ -16,6 +16,7 @@ contextBridge.exposeInMainWorld('loki', Object.freeze({
   scanFiles: options => invoke('files:scan', options),
   createFolder: (relative, name) => invoke('files:createFolder', relative, name),
   renameFile: (relative, name) => invoke('files:rename', relative, name),
+  copyFile: (relative, destination) => invoke('files:copy', relative, destination),
   stats: () => invoke('system:stats'),
   shareInterfaces: () => invoke('share:interfaces'),
   shareStatus: () => invoke('share:status'),

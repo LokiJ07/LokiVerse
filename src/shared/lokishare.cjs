@@ -45,6 +45,18 @@ function safeFileName(input) {
   if(candidate.length>180 || !validName(candidate)) throw Error('Unsupported filename. Rename the file and try again.');
   return candidate;
 }
+// Only support a single forward range. Multi-range is not needed for local phone resuming.
+function parseDownloadRange(header, size) {
+  if (header === undefined || header === null) return null;
+  if (typeof header !== 'string' || !/^bytes=(0|[1-9]\d*)-$/.test(header)) throw Error('Invalid byte range.');
+  const offset = Number(header.slice(6,-1));
+  if (!Number.isSafeInteger(offset) || offset >= size || offset < 0) throw Error('Range cannot be satisfied.');
+  return offset;
+}
+function transferETag(file, stat) {
+  // ETag for a particular selected file/version. Avoid a full 512 MiB hash on each request.
+  return '"' + crypto.createHash('sha256').update(`${file.id}:${file.path}:${stat.size}:${stat.mtimeMs}`).digest('hex') + '"';
+}
 function newDownloadName(name) {
   // ASCII fallback + RFC 5987 encoded UTF-8 filename for mobile browsers.
   const ascii=name.replace(/[^a-zA-Z0-9._-]/g,'_').replace(/^\.+/,'file');
@@ -196,9 +208,25 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
         if(!file) return error(res,404,'File is no longer shared.');
         const stat=await fs.stat(file.path);
         if(!stat.isFile() || stat.size!==file.size) return error(res,409,'File changed since it was selected. Re-add it on the PC.');
-        const transfer=addTransfer({direction:'to phone',device:client.device,name:file.name,size:stat.size,bytes:0,status:'transferring'});
-        res.writeHead(200,{...headers,'Content-Type':'application/octet-stream','Content-Length':String(stat.size),'Content-Disposition':newDownloadName(file.name)});
-        const stream=fsSync.createReadStream(file.path);let last=0;
+        // Prevent resuming a changed file, including edits that preserve the same byte size.
+        if (file.modifiedMs !== stat.mtimeMs) return error(res,409,'Shared file changed. Re-add it from Windows.');
+        const etag=transferETag(file,stat);
+        const ifRange=req.headers['if-range'];
+        let offset=null;
+        try {
+          // A stale validator means send a fresh complete file, never append mixed versions.
+          if (!ifRange || ifRange===etag) offset=parseDownloadRange(req.headers.range,stat.size);
+        } catch {
+          res.writeHead(416,{...headers,'Content-Range':`bytes */${stat.size}`,'ETag':etag,'Accept-Ranges':'bytes'});
+          res.end();return;
+        }
+        const start=offset??0, partial=offset!==null;
+        const transfer=addTransfer({direction:'to phone',device:client.device,name:file.name,size:stat.size,bytes:start,status:'transferring'});
+        res.writeHead(partial?206:200,{...headers,'Content-Type':'application/octet-stream',
+          'Accept-Ranges':'bytes','ETag':etag,
+          ...(partial?{'Content-Range':`bytes ${start}-${stat.size-1}/${stat.size}`} : {}),
+          'Content-Length':String(stat.size-start),'Content-Disposition':newDownloadName(file.name)});
+        const stream=fsSync.createReadStream(file.path,{start});let last=0;
         activeTransfers.set(transfer.id,()=>{stream.destroy();res.destroy();});
         stream.on('data',chunk=>{transfer.bytes+=chunk.length;if(clock()-last>250){last=clock();changed();}});
         res.on('close',()=>{if(!res.writableFinished && transfer.status==='transferring'){finishTransfer(transfer,'interrupted');stream.destroy();}});
@@ -287,7 +315,7 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
       if(!st.isFile() || st.size>MAX_FILE) continue;
       const name=path.basename(real);
       if(!validName(name)) continue;
-      const id=rand(10);downloads.set(id,{id,path:real,name,size:st.size});
+      const id=rand(10);downloads.set(id,{id,path:real,name,size:st.size,modifiedMs:st.mtimeMs});
     }
     changed();return status();
   }
@@ -302,4 +330,4 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
   }
   return {listPrivateInterfaces,status,start,stop,approve,setInbox,addFiles,removeFile,revoke,inviteURL,cancelTransfer,clearHistory,loadHistory:readHistory};
 }
-module.exports={createLokiShare,listPrivateInterfaces,safeFileName,MAX_FILE};
+module.exports={createLokiShare,listPrivateInterfaces,safeFileName,MAX_FILE,parseDownloadRange,transferETag};

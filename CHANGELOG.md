@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.7.0 — Advanced Ecosystem Integration (2026-11-02)
+
+- Added HTTP byte-range support on the secure LokiShare Windows host, including ETag/If-Range verification and changed-file rejection.
+- Android client now stages downloaded files privately and attempts bounded byte-range retries before final SAF save. No retrying uploads or continuing after app restart.
+- Refreshed native Android screen layout with gradient cards, section hierarchy, and connection-health checks.
+- Added safe, explicit root-scoped copy of ordinary files in LokiFiles, with no overwrite/delete behavior.
+- Added optional GitHub Actions Android release APK signing using private repository secrets; TEST APK remains default.
+- Kept existing identity, TLS pinning, pairing approval, app storage, Windows NSIS installer settings and CI setup.
+- Added end-to-end range and safe-copy regression tests plus Java resume-protocol unit tests.
+
 ## v0.6.0 — Smart Device Ecosystem (2026-11-02)
 
 - Added optional Windows LAN discovery UDP beacon (host name/local IP/port only, port 43961). No trusted discovery or credential transmission; QR, fingerprint pin, and user approval still mandatory.

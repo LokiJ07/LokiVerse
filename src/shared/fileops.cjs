@@ -58,6 +58,23 @@ function createFileOps(root) {
     await fs.rename(existing,target);
     return { name };
   }
+  // Explicit user-initiated local copy. This operation never deletes or overwrites.
+  async function copyFile(relativeFile, relativeDestination='') {
+    const selected=path.resolve(root);
+    const requested=path.resolve(selected,relativeFile);
+    if(!isWithinFolder(selected,requested) || requested===selected) throw Error('Invalid source path.');
+    const linkStat=await fs.lstat(requested);
+    if(!linkStat.isFile() || linkStat.isSymbolicLink()) throw Error('Only ordinary files can be copied.');
+    const source=await resolveInside(root,relativeFile);
+    const targetFolder=await folder(relativeDestination);
+    const name=path.basename(source);
+    if(!validName(name)) throw Error('Unsupported filename.');
+    const target=path.join(targetFolder,name);
+    if(path.resolve(target)===source) throw Error('Source and destination are the same.');
+    // Atomic no-overwrite reservation at the destination, including on Windows.
+    await fs.copyFile(source,target,fsSync.constants.COPYFILE_EXCL);
+    return {name,destination:path.relative(await fs.realpath(root),target)};
+  }
   async function scan({ query='', duplicates=false }={}) {
     if(typeof query !== 'string' || query.length > 120) throw Error('Search is too long.');
     const term=query.trim().toLowerCase();
@@ -107,6 +124,6 @@ function createFileOps(root) {
     }
     return {mode:'duplicates',groups:[...byHash.values()].filter(group=>group.length>1),scanned,skipped,hashed,truncated:truncated||possible.length>=150||candidates.length>=2500};
   }
-  return { createFolder,rename,scan };
+  return { createFolder,rename,copyFile,scan };
 }
 module.exports={createFileOps,resolveInside,validName};

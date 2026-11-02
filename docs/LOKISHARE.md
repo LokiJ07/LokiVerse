@@ -29,3 +29,9 @@ A QR is an out-of-band trusted step: **an attacker controlling the QR displayed 
 - Large uploads require a known file size. Client HTTPS timeouts and Wi-Fi interruptions may require re-sending.
 - Certificate rotation requires scanning a fresh QR. An unreadable TLS identity file causes an explicit error instead of silently changing fingerprints.
 - Before production deployment, a dedicated security review is recommended, including Windows junction/symlink race considerations, APK signing, traffic logs, firewall policy and physical mobile tests.
+
+## v0.7.0: resumable Android downloads (current operation only)
+
+The Windows host supports a single `Range: bytes=N-` header with `If-Range: "opaque ETag"`. Valid byte-range responses use HTTP 206 and `Content-Range`; invalid ranges return HTTP 416, and changed files require re-sharing on the PC. Only authenticated, explicitly shared files are downloadable. A stale ETag causes a fresh full response, never mixed partial content.
+
+The native Android companion receives data into a private temporary file, reconnects up to two times on transient I/O errors, and validates the ETag, exact byte offset and expected size before copying a complete result into the user's chosen document location. It must stay open for retries. This is **not** cross-restart resume, automatic upload retry, a background transfer service, or remote Internet syncing. For large files, ensure sufficient free device storage. For Android release-signing details, see `ANDROID_SIGNING.md`.

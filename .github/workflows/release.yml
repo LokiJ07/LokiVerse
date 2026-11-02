@@ -72,6 +72,36 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           cp android-companion/app/build/outputs/apk/debug/*.apk "android-out/LokiShare-${VERSION}-Android-TEST.apk"
           (cd android-out && sha256sum *.apk > SHA256SUMS-ANDROID-TEST.txt)
+      - name: Optional stable signed Android release (protected secrets)
+        shell: bash
+        env:
+          LOKISHARE_KEYSTORE_BASE64: ${{ secrets.LOKISHARE_KEYSTORE_BASE64 }}
+          LOKISHARE_STORE_PASSWORD: ${{ secrets.LOKISHARE_STORE_PASSWORD }}
+          LOKISHARE_KEY_ALIAS: ${{ secrets.LOKISHARE_KEY_ALIAS }}
+          LOKISHARE_KEY_PASSWORD: ${{ secrets.LOKISHARE_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [[ -z "${LOKISHARE_KEYSTORE_BASE64:-}" && -z "${LOKISHARE_STORE_PASSWORD:-}" && -z "${LOKISHARE_KEY_ALIAS:-}" && -z "${LOKISHARE_KEY_PASSWORD:-}" ]]; then
+            echo "No release signing secrets configured: continuing with TEST APK only."
+            exit 0
+          fi
+          for name in LOKISHARE_KEYSTORE_BASE64 LOKISHARE_STORE_PASSWORD LOKISHARE_KEY_ALIAS LOKISHARE_KEY_PASSWORD; do
+            if [[ -z "${!name:-}" ]]; then echo "Incomplete signing configuration: missing $name"; exit 1; fi
+          done
+          export LOKISHARE_KEYSTORE_PATH="$RUNNER_TEMP/lokishare-release.jks"
+          trap 'rm -f "$LOKISHARE_KEYSTORE_PATH"' EXIT
+          printf '%s' "$LOKISHARE_KEYSTORE_BASE64" | base64 --decode > "$LOKISHARE_KEYSTORE_PATH"
+          unset LOKISHARE_KEYSTORE_BASE64
+          (cd android-companion && gradle --no-daemon :app:assembleRelease)
+          cp android-companion/app/build/outputs/apk/release/app-release.apk "android-out/LokiShare-${GITHUB_REF_NAME#v}-Android-SIGNED.apk"
+          (cd android-out && sha256sum *SIGNED.apk > SHA256SUM-ANDROID-SIGNED.txt)
+      - name: Attach optional signed Android APK to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            android-out/*-Android-SIGNED.apk
+            android-out/SHA256SUM-ANDROID-SIGNED.txt
+          fail_on_unmatched_files: false
       - name: Attach test-only Android APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:

@@ -153,18 +153,76 @@ final class PinnedClient {
             cancellation.check();return new JSONObject(read(c));
         }finally{cancellation.detach(c);c.disconnect();}
     }
+    /**
+     * Recover from up to two transient Wi-Fi interruptions using HTTPS Range + If-Range.
+     * Download bytes land in a private temporary file first, so an interrupted request
+     * never corrupts the user's chosen SAF document. Resume is scoped to this call.
+     */
     void download(Context context,String id, Uri destination, TransferProgress progress, TransferCancellation cancellation) throws Exception {
-        HttpsURLConnection c=open("/api/download?id="+URLEncoder.encode(id,"UTF-8"),"GET");
-        cancellation.attach(c);
+        java.io.File partial=java.io.File.createTempFile("lokishare-", ".partial", context.getCacheDir());
+        String etag=null;
+        final String route="/api/download?id="+URLEncoder.encode(id,"UTF-8");
         try {
-            if(c.getResponseCode()!=200){read(c);throw new Exception("Download rejected.");}
-            long length=c.getContentLengthLong();long done=0;
-            try(InputStream input=c.getInputStream();OutputStream output=context.getContentResolver().openOutputStream(destination,"w")){
-                if(output==null)throw new Exception("Could not write destination.");
-                byte[] buf=new byte[64*1024];int n;
-                while((n=input.read(buf))!=-1){cancellation.check();output.write(buf,0,n);done+=n;progress.onProgress(done,length);}
+            boolean finished=false;
+            for (int attempt=0;attempt<3 && !finished;attempt++) {
+                cancellation.check();
+                long offset=partial.length();
+                HttpsURLConnection c=open(route,"GET");
+                if (offset>0 && etag!=null) {
+                    c.setRequestProperty("Range","bytes="+offset+"-");
+                    c.setRequestProperty("If-Range",etag);
+                }
+                cancellation.attach(c);
+                try {
+                    int http=c.getResponseCode();
+                    if (http!=200 && http!=206) {
+                        read(c);throw new Exception("Download rejected (HTTP "+http+").");
+                    }
+                    ResumeProtocol.Plan plan=ResumeProtocol.inspect(http,c.getHeaderField("Content-Range"),
+                        c.getHeaderField("ETag"),etag,offset,c.getContentLengthLong(),MAX_FILE);
+                    if (plan.start==0 && offset>0) {
+                        // Server says file changed or ignored range: start fresh, don't combine versions.
+                        try(java.io.RandomAccessFile reset=new java.io.RandomAccessFile(partial,"rw")){reset.setLength(0);}
+                        offset=0;
+                    }
+                    etag=c.getHeaderField("ETag");
+                    if (new android.os.StatFs(context.getCacheDir().getAbsolutePath()).getAvailableBytes()
+                            < plan.total-offset+1024*1024) {
+                        throw new Exception("Not enough free phone storage for secure download recovery.");
+                    }
+                    try(InputStream input=c.getInputStream();
+                        java.io.RandomAccessFile output=new java.io.RandomAccessFile(partial,"rw")) {
+                        output.seek(plan.start);
+                        long done=plan.start;int n;byte[] buf=new byte[64*1024];
+                        while((n=input.read(buf))!=-1) {
+                            cancellation.check();output.write(buf,0,n);done+=n;
+                            if(done>plan.total)throw new Exception("Download exceeded expected size.");
+                            progress.onProgress(done,plan.total);
+                        }
+                        if(done!=plan.total)throw new java.io.EOFException("Wi-Fi connection ended before download finished.");
+                        finished=true;
+                    }
+                } catch(java.io.IOException network) {
+                    if(cancellation.isCancelled() || network instanceof javax.net.ssl.SSLException || attempt==2) throw network;
+                    // The next attempt requests only remaining bytes with the ETag we verified.
+                    cancellation.check();
+                    Thread.sleep(400L*(attempt+1));
+                } finally {
+                    cancellation.detach(c);c.disconnect();
+                }
             }
-        }finally{cancellation.detach(c);c.disconnect();}
+            if(!finished)throw new Exception("Download interrupted. Please retry.");
+            cancellation.check();
+            // Only publish to user-selected SAF location after the complete download is verified.
+            try(InputStream source=new java.io.FileInputStream(partial);
+                OutputStream out=context.getContentResolver().openOutputStream(destination,"wt")) {
+                if(out==null)throw new Exception("Could not save the downloaded file.");
+                byte[] buf=new byte[64*1024];int n;
+                while((n=source.read(buf))!=-1){cancellation.check();out.write(buf,0,n);}
+            }
+        } finally {
+            if(!partial.delete())partial.deleteOnExit();
+        }
     }
     interface TransferProgress {void onProgress(long bytes,long total);}
 }

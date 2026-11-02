@@ -1,5 +1,11 @@
 plugins { id 'com.android.application' }
 
+// Signing is opt-in: GitHub Secrets supply the key only during trusted tag releases.
+// CI/PR debug builds continue working without any secrets.
+def releaseSigningReady = ['LOKISHARE_KEYSTORE_PATH', 'LOKISHARE_STORE_PASSWORD',
+                           'LOKISHARE_KEY_ALIAS', 'LOKISHARE_KEY_PASSWORD']
+    .every { System.getenv(it) != null && !System.getenv(it).isEmpty() }
+
 android {
     namespace 'com.lokij.lokishare'
     compileSdk 35
@@ -7,8 +13,24 @@ android {
         applicationId 'com.lokij.lokishare'
         minSdk 26
         targetSdk 35
-        versionCode 8
-        versionName '0.6.0'
+        versionCode 9
+        versionName '0.7.0'
+    }
+    signingConfigs {
+        if (releaseSigningReady) {
+            create('lokiRelease') {
+                storeFile file(System.getenv('LOKISHARE_KEYSTORE_PATH'))
+                storePassword System.getenv('LOKISHARE_STORE_PASSWORD')
+                keyAlias System.getenv('LOKISHARE_KEY_ALIAS')
+                keyPassword System.getenv('LOKISHARE_KEY_PASSWORD')
+            }
+        }
+    }
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (releaseSigningReady) signingConfig signingConfigs.lokiRelease
+        }
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
