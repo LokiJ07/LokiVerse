@@ -29,7 +29,7 @@ const q = selector => document.querySelector(selector);
 const panel = q('#content');
 const pages = {home:'Overview',tasks:'My Tasks',notes:'LokiNotes',files:'LokiFiles',monitor:'SystemPulse',share:'LokiShare',settings:'Settings'};
 let data = {tasks:[],notes:[],settings:{displayName:'Creator'}};
-let info = {version:'0.2.0'};
+let info = {version:'0.2.1'};
 let currentView = 'home';
 let taskFilter = 'all';
 let taskSearch = '';
@@ -337,7 +337,7 @@ async function refreshStats(){
 }
 function renderShare(){
   panel.innerHTML=`${heading('THE NEXT CONNECTION','LokiShare','Our upcoming direct Wi-Fi file sharing module.')}
-    <div class="center-card"><div class="giant-icon">${icon('share')}</div><span class="eyebrow">COMING IN A FUTURE RELEASE</span><h2>Share files. Not your privacy.</h2><p>We are planning direct Android ↔ Windows file transfer over the same local network, without cloud accounts. This feature is <strong>not yet implemented</strong> in v0.2.0.</p></div>
+    <div class="center-card"><div class="giant-icon">${icon('share')}</div><span class="eyebrow">COMING IN A FUTURE RELEASE</span><h2>Share files. Not your privacy.</h2><p>We are planning direct Android ↔ Windows file transfer over the same local network, without cloud accounts. This feature is <strong>not yet implemented</strong> in v0.2.1.</p></div>
     <div class="roadmap"><div class="roadmap-card"><div class="roadmap-icon">${icon('shield')}</div><h3>Secure pairing</h3><p>Pair devices with a one-time code or QR scan before transferring files.</p></div><div class="roadmap-card"><div class="roadmap-icon">${icon('share')}</div><h3>Direct transfers</h3><p>Send files over local Wi-Fi, even when the internet is disconnected.</p></div><div class="roadmap-card"><div class="roadmap-icon">${icon('activity')}</div><h3>Live progress</h3><p>Track the status of incoming and outgoing transfers in real time.</p></div></div>`;
 }
 function renderSettings(){
@@ -348,7 +348,7 @@ function renderSettings(){
     <section class="panel setting-card"><div class="setting-line"><div><h3>Local backups</h3><p>Tasks, categories, notes, and settings are saved locally. Export a JSON backup or restore an earlier backup.</p></div><div style="display:flex;gap:9px"><button class="button" id="exportBackup">${icon('download')} Export</button><button class="button button-ghost" id="importBackup">${icon('upload')} Restore</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Version & updates</h3><p>Installed version: <strong>v${escapeHtml(info.version)}</strong>. New Windows installers update over the existing installation. GitHub Releases are publicly available without an app signing secret.</p><p id="updateMessage" class="fine-print"></p></div><div style="display:flex;gap:9px"><button class="button" id="checkUpdate">${icon('refresh')} Check Updates</button><button class="button button-ghost" id="releasePage">${icon('external')} Releases</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Your storage</h3><p>Saved data folder: <strong>${escapeHtml(info.dataDirectory||'Local app data')}</strong></p><p>Files and notes stay on your computer unless you export or share them.</p></div><button class="button button-ghost" id="openDataFolder">${icon('folder')} Open Folder</button></div></section>
-    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.2.0.</div>`;
+    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.2.1.</div>`;
   q('#nameForm').addEventListener('submit',e=>{e.preventDefault();data.settings.displayName=q('#displayName').value.trim().slice(0,50)||'Creator';persist(true);renderSettings();});
   panel.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>{data.settings.accent=btn.dataset.accent;applyAccent();persist(true);renderSettings();}));
   q('#remindersEnabled').addEventListener('change',e=>{data.settings.reminders=e.target.checked;persist(true);});

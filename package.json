@@ -1,8 +1,8 @@
 {
   "name": "lokiverse",
   "productName": "LokiVerse",
-  "version": "0.2.0",
-  "description": "LokiVerse \u2014 an offline-first desktop workspace by LokiJ.",
+  "version": "0.2.1",
+  "description": "LokiVerse — an offline-first desktop workspace by LokiJ.",
   "author": "LokiJ",
   "license": "MIT",
   "private": true,
@@ -22,7 +22,7 @@
   "build": {
     "appId": "com.lokij.lokiverse",
     "productName": "LokiVerse",
-    "copyright": "Copyright \u00a9 2026 LokiJ",
+    "copyright": "Copyright © 2026 LokiJ",
     "asar": true,
     "directories": {
       "output": "release"

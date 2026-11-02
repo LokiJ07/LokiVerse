@@ -1,6 +1,6 @@
 # Changelog
 
-## [0.2.0 source hotfix] — Windows CI path validation
+## [0.2.1] — Windows CI path validation
 - Fix canonical-root comparisons in LokiFiles path resolution to work with Windows junctions/aliases without allowing traversal or symlink escapes.
 - Align folder create, rename, search and duplicate scan paths with the canonical selected folder.
 - Add two security regression tests; 15 tests now run (verified locally on Linux/Node 22).

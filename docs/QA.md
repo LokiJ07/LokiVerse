@@ -1,10 +1,10 @@
-# LokiVerse v0.2.0 — Windows Verification Checklist
+# LokiVerse v0.2.1 — Windows Verification Checklist
 
 ## Upgrade & data retention
 
 - [ ] Export backup in installed v0.1.1 before installing anything.
-- [ ] New v0.2.0 installer runs over v0.1.1 **without manually uninstalling**.
-- [ ] Version shown on Overview, sidebar and Settings is v0.2.0.
+- [ ] New v0.2.1 installer runs over v0.1.1 **without manually uninstalling**.
+- [ ] Version shown on Overview, sidebar and Settings is v0.2.1.
 - [ ] Existing v0.1.1 notes, tasks and accent preference remain unchanged.
 - [ ] Add new note/task, close/relaunch, confirm changes remain.
 - [ ] Windows shows one LokiVerse installed-app entry.

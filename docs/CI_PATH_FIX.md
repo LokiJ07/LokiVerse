@@ -1,4 +1,4 @@
-# Windows CI path-guard fix (v0.2.0 source hotfix)
+# Windows CI path-guard fix (v0.2.1 hotfix)
 
 ## Failure summary
 
@@ -19,8 +19,6 @@ The underlying portability hazard was that `fs.realpath(candidate)` (a canonical
 
 `npm run check` on Node.js 22 (Linux) passed all 15 tests and syntax validation. Windows CI and the resulting installer remain to be verified on GitHub Actions. No appId, productName, userData path, installer settings, or saved-data schema was changed.
 
-## What to do about the release tag
+## Release instructions
 
-If `v0.2.0` has **not** been pushed as a tag: push this fix to `main`, wait for green CI, then create `v0.2.0`.
-
-If `v0.2.0` **has already been pushed**: do not silently move or force-update that published tag. Instead, change `package.json` version from `0.2.0` to `0.2.1`, commit that change along with the fix, wait for CI, then tag and push `v0.2.1`. The release workflow requires the tag and the package version to match.
+This hotfix has package version **0.2.1** and is intended for repositories where the `v0.2.0` tag has already been pushed. Keep the existing `v0.2.0` tag immutable, commit this fixed source on `main`, wait for CI, then `git tag v0.2.1` and `git push origin v0.2.1`.
