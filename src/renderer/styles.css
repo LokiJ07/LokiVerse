@@ -223,3 +223,13 @@ body[data-accent="sunset"]{--accent:#ff8bad;--accent-soft:#ff8bad24;--accent-bri
 @media(max-width:1480px){.planner-calendar{grid-template-columns:repeat(4,minmax(0,1fr))}.planner-day{min-height:180px}}
 @media(max-width:1120px){.planner-calendar{grid-template-columns:repeat(3,minmax(0,1fr))}.planner-bottom{grid-template-columns:1fr}}
 @media(max-width:850px){.planner-calendar{grid-template-columns:repeat(2,minmax(0,1fr))}.focus-board{flex-wrap:wrap}}
+
+/* 1.0 Workspace Health diagnostics */
+.workspace-health-card{border-color:#4e456c;background:linear-gradient(116deg,#201b32,#141825)}
+.health-result{font-size:12px;margin-top:14px;line-height:1.5;color:var(--muted);max-width:680px}
+.health-verdict{font-size:12px;font-weight:800;padding:11px 13px;border-radius:10px;margin-bottom:9px}
+.health-ok{color:#91f3c6;background:#21483c55;border:1px solid #4da98a55}
+.health-warn{color:#ffd79b;background:#6848204a;border:1px solid #b68c4555}
+.health-row{display:grid;grid-template-columns:120px auto;gap:6px 12px;padding:10px 2px;border-bottom:1px solid #ffffff14}
+.health-row strong{color:var(--text)}.health-row span{color:#c8b7ff}.health-row small{grid-column:1/-1;color:var(--muted);overflow-wrap:anywhere}
+@media (prefers-reduced-motion:reduce){*,*:before,*:after{scroll-behavior:auto!important;animation-duration:.01ms!important;transition-duration:.01ms!important}}

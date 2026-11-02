@@ -1,8 +1,8 @@
 {
   "name": "lokiverse",
   "productName": "LokiVerse",
-  "version": "0.9.0",
-  "description": "LokiVerse — offline-first productivity, secured local sharing, workspace planner, recurring tasks, linked notes and secure local sharing.",
+  "version": "1.0.0",
+  "description": "LokiVerse 1.0 — offline-first Windows workspace with safe local backups, planner, notes, file tools, system monitor and secure Android companion sharing.",
   "author": "LokiJ",
   "license": "MIT",
   "private": true,

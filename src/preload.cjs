@@ -7,6 +7,7 @@ contextBridge.exposeInMainWorld('loki', Object.freeze({
   exportBackup: () => invoke('data:export'), importBackup: () => invoke('data:import'),
   openDataFolder: () => invoke('data:openFolder'),
   getRecoveryStatus: () => invoke('data:recoveryStatus'),
+  workspaceHealth: () => invoke('data:health'),
   togglePlannedTask: (tasks, id, today, newId) => invoke('planner:toggleTask', tasks, id, today, newId),
   onCloseRequest: callback => { ipcRenderer.on('app:requestClose', callback); },
   completeClose: saved => invoke('app:completeClose', saved),

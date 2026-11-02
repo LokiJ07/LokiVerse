@@ -1,5 +1,19 @@
 # Changelog
 
+## v1.0.0 — First Stable-Release Candidate (2026-11-02)
+
+- Hardened workspace loading: if the primary workspace file goes missing while a valid last-known-good `.bak` exists, restore it instead of silently showing an empty workspace.
+- Validate the saved JSON structure before normalizing it. Corrupt but syntactically valid files no longer silently turn into empty workspaces.
+- Preserve corrupt primary files and validate backup files before recovery. Unusable backups are never applied over the user's primary data.
+- Seed a recovery backup on first successful save. Data files remain locally stored and limited to 15 MiB.
+- Added **Workspace Health** in Settings: inspect workspace and recovery backup validity, item counts and modification times without modifying files.
+- Added **single-instance protection** to prevent two Windows processes competing to save the same workspace and restricted privileged IPC to the main application window.
+- Added a reduced-motion accessibility fallback.
+- Retained the same Windows installer ID, Android app ID, desktop data format, local HTTPS fingerprint pinning and previous modules. Android release versionCode increased to 12.
+- Added storage recovery and release-regression tests, CI QA gate and full public release documentation.
+- **Not included:** Windows trusted code signing, stable Android signing keys, resumable uploads, or downloads after an Android app restart. Full device acceptance tests are still required before public production designation.
+
+
 ## v0.9.0 — Workspace 2.0 (2026-11-02)
 
 - Added seven-day Weekly Planner with local calendar navigation, backlog management and in-week scheduling.

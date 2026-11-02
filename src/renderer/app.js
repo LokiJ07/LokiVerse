@@ -469,7 +469,7 @@ async function refreshStats(){
 }
 function renderShare(){
   panel.innerHTML=`${heading('CONNECT YOUR DEVICES','LokiShare','Send files between Windows and your phone on the same private Wi-Fi. No cloud required.')}
-    <section class="share-intro"><span class="share-live">${icon('share')} ENCRYPTED LOCAL FILE TRANSFER · v0.9.0</span><h2>Your files. Your devices.<br><strong>One local connection.</strong></h2><p>Start a secure sharing session, discover your PC if available, and verify QR + approval. Android can retry interrupted downloads while the app remains open.</p><div class="share-steps"><span>① Start Windows host</span><span>② Scan QR with Android app</span><span>③ Approve matching number</span><span>④ Transfer directly</span></div></section>
+    <section class="share-intro"><span class="share-live">${icon('share')} ENCRYPTED LOCAL FILE TRANSFER · v1.0.0</span><h2>Your files. Your devices.<br><strong>One local connection.</strong></h2><p>Start a secure sharing session, discover your PC if available, and verify QR + approval. Android can retry interrupted downloads while the app remains open.</p><div class="share-steps"><span>① Start Windows host</span><span>② Scan QR with Android app</span><span>③ Approve matching number</span><span>④ Transfer directly</span></div></section>
     <div class="share-layout"><div>
       <section class="panel share-card"><div class="section-header"><h3>Connection</h3><span class="share-badge" id="shareBadge">Offline</span></div>
       <p class="muted share-info">Choose the private network connected to your phone. LokiShare starts only when you click Start. Optional nearby-PC discovery broadcasts the host name and local address, <strong>not</strong> the QR pairing secret.</p>
@@ -555,18 +555,43 @@ function renderSettings(){
     <section class="panel setting-card"><div class="setting-line"><div><h3>Accent color</h3><p>Personalize LokiVerse without changing your local data.</p></div></div><div class="accent-options" role="group" aria-label="Accent color"><button class="accent-option ${data.settings.accent==='purple'?'selected':''}" data-accent="purple"><span class="accent-dot purple-dot"></span> Aurora purple</button><button class="accent-option ${data.settings.accent==='cyan'?'selected':''}" data-accent="cyan"><span class="accent-dot cyan-dot"></span> Arctic cyan</button><button class="accent-option ${data.settings.accent==='sunset'?'selected':''}" data-accent="sunset"><span class="accent-dot sunset-dot"></span> Sunset rose</button></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Workspace preferences</h3><p>Reminders appear while LokiVerse is running. Compact mode fits more content on screen.</p></div><div class="setting-toggles"><label><input id="remindersEnabled" type="checkbox" ${data.settings.reminders!==false?'checked':''}> Task reminders</label><label><input id="compactEnabled" type="checkbox" ${data.settings.compactMode?'checked':''}> Compact layout</label></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Local backups</h3><p>Tasks, categories, notes, and settings are saved locally. Export a JSON backup or restore an earlier backup.</p></div><div style="display:flex;gap:9px"><button class="button" id="exportBackup">${icon('download')} Export</button><button class="button button-ghost" id="importBackup">${icon('upload')} Restore</button></div></div></section>
+    <section class="panel setting-card workspace-health-card"><div class="setting-line"><div><h3>Workspace Health · v1.0</h3><p>Check your local workspace and last-known-good recovery backup without modifying your data.</p><div id="workspaceHealthResult" class="health-result" role="status" aria-live="polite">Run a check to inspect the workspace and recovery backup.</div></div><button class="button button-ghost" id="runWorkspaceHealth">${icon('activity')} Run Check</button></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Version & updates</h3><p>Installed version: <strong>v${escapeHtml(info.version)}</strong>. New Windows installers update over the existing installation. GitHub Releases are publicly available without an app signing secret.</p><p id="updateMessage" class="fine-print"></p></div><div style="display:flex;gap:9px"><button class="button" id="checkUpdate">${icon('refresh')} Check Updates</button><button class="button button-ghost" id="releasePage">${icon('external')} Releases</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Your storage</h3><p>Saved data folder: <strong>${escapeHtml(info.dataDirectory||'Local app data')}</strong></p><p>Files and notes stay on your computer unless you export or share them.</p></div><button class="button button-ghost" id="openDataFolder">${icon('folder')} Open Folder</button></div></section>
-    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.9.0. LokiShare runs only when enabled and uses local HTTPS.</div>`;
+    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v1.0.0. LokiShare runs only when enabled and uses local HTTPS.</div>`;
   q('#nameForm').addEventListener('submit',e=>{e.preventDefault();data.settings.displayName=q('#displayName').value.trim().slice(0,50)||'Creator';persist(true);renderSettings();});
   panel.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>{data.settings.accent=btn.dataset.accent;applyAccent();persist(true);renderSettings();}));
   q('#remindersEnabled').addEventListener('change',e=>{data.settings.reminders=e.target.checked;persist(true);});
   q('#compactEnabled').addEventListener('change',e=>{data.settings.compactMode=e.target.checked;applyAccent();persist(true);});
   q('#exportBackup').addEventListener('click',async()=>{try{const result=await window.loki.exportBackup();if(!result.canceled)toast('Backup exported successfully.')}catch(e){fail(e)}});
   q('#importBackup').addEventListener('click',async()=>{try{await flushNoteEdits();const result=await window.loki.importBackup();if(!result.canceled){data=result.data;selectedNoteId=null;noteFolder='all';taskCategory='all';applyAccent();setSaveStatus('saved','✓ Saved locally');toast('Workspace restored.');renderSettings();}}catch(e){fail(e)}});
+  q('#runWorkspaceHealth').addEventListener('click',checkWorkspaceHealth);
   q('#checkUpdate').addEventListener('click',checkUpdate);
   q('#releasePage').addEventListener('click',()=>window.loki.openReleases().catch(fail));
   q('#openDataFolder').addEventListener('click',()=>window.loki.openDataFolder().catch(fail));
+}
+async function checkWorkspaceHealth() {
+  const button=q('#runWorkspaceHealth');
+  const target=q('#workspaceHealthResult');
+  if(!button || !target)return;
+  button.disabled=true;
+  target.textContent='Checking local workspace and recovery backup…';
+  try {
+    const result=await window.loki.workspaceHealth();
+    if (currentView!=='settings')return;
+    const labels={healthy:'Healthy · workspace and backup are readable',new:'New workspace · no saved files yet',
+      recoverable:'Recovery available · reopen LokiVerse to restore the backup',
+      attention:'Attention required · keep existing files and export only after recovery',
+      'backup-needed':'Workspace readable · backup needs attention'};
+    const display=(entry,label)=>{
+      const state=entry.status==='healthy'?'✓ Verified':entry.status==='missing'?'— Not found':'⚠ Invalid';
+      const detail=entry.status==='healthy'?`${entry.tasks} tasks · ${entry.notes} notes · ${bytes(entry.bytes)} · Updated ${new Date(entry.modified).toLocaleString()}`:
+        (entry.reason||'No local file currently exists');
+      return `<div class="health-row"><strong>${escapeHtml(label)}</strong><span>${escapeHtml(state)}</span><small>${escapeHtml(detail)}</small></div>`;
+    };
+    target.innerHTML=`<div class="health-verdict ${result.verdict==='healthy'?'health-ok':'health-warn'}">${escapeHtml(labels[result.verdict]||result.verdict)}</div>${display(result.primary,'Workspace')}${display(result.backup,'Recovery backup')}`;
+  } catch(error) { if (currentView==='settings')target.textContent='Health check failed: '+(error?.message||String(error)); }
+  finally {if(currentView==='settings' && q('#runWorkspaceHealth'))q('#runWorkspaceHealth').disabled=false;}
 }
 async function checkUpdate(){
   const btn=q('#checkUpdate');if(btn)btn.disabled=true;

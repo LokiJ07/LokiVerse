@@ -49,7 +49,9 @@ function dataFile() { return path.join(app.getPath('userData'), 'lokiverse-data.
 function storage() { return createStorage(dataFile()); }
 async function readData() {
   const result = await storage().read();
-  if (result.recovered) workspaceRecovery = 'A previous backup was recovered after an unreadable workspace file. The original was preserved in your data folder.';
+  if (result.recovered) workspaceRecovery = result.preserved
+    ? 'A previous workspace backup was recovered after an unreadable file. Your original was preserved in your data folder.'
+    : 'The workspace file was missing. LokiVerse restored it from its last-known-good backup.';
   return result.data;
 }
 async function writeData(data) { return storage().write(data); }
@@ -90,12 +92,21 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   mainWindow.webContents.on('will-navigate', event => event.preventDefault());
 }
-const safeHandle = (name, fn) => ipcMain.handle(name, (_, ...args) => fn(...args));
+const safeHandle = (name, fn) => ipcMain.handle(name, (event, ...args) => {
+  // Defense in depth: only our main window may invoke privileged IPC operations.
+  if (!mainWindow || mainWindow.isDestroyed() || event.sender !== mainWindow.webContents)
+    throw new Error('Unauthorized app window.');
+  return fn(...args);
+});
 
 // SECURITY: the renderer gets named operations only. It never receives unrestricted fs/shell APIs.
 function registerHandlers() {
   safeHandle('app:getInfo', () => ({ version: app.getVersion(), repository: RELEASE_REPOSITORY, dataDirectory: app.getPath('userData') }));
   safeHandle('data:load', readData);
+  safeHandle('data:health', async () => {
+    await saving;
+    return storage().health();
+  });
   // A single authoritative completion operation creates one next recurrence.
   // Renderer only receives normalized data; no filesystem access is exposed.
   safeHandle('planner:toggleTask', (tasks, taskId, today, nextId) => {
@@ -378,6 +389,15 @@ async function checkReminders() {
   } catch (error) { console.warn('Reminders unavailable:', error.message); }
   finally { reminderBusy = false; }
 }
+const singleInstance = app.requestSingleInstanceLock();
+if (!singleInstance) app.quit();
+else {
+  app.on('second-instance', () => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.show(); mainWindow.focus();
+    }
+  });
 app.whenReady().then(() => {
   registerHandlers();
   createWindow();
@@ -385,5 +405,6 @@ app.whenReady().then(() => {
   setInterval(checkReminders, 60000).unref();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }).catch(error => { dialog.showErrorBox('LokiVerse launch error', error.message); app.quit(); });
+}
 app.on('before-quit', () => { discovery.stop(); lokiShare.stop().catch(() => {}); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

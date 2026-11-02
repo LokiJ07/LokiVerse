@@ -1,74 +1,73 @@
-# LokiVerse v0.9.0 — Workspace 2.0 💜
+# 💜 LokiVerse v1.0.0 — First Stable Release Candidate
 
-**Windows:** LokiVerse, a local-first Electron desktop workspace for tasks, notes, a weekly planner, file tools, system monitoring and secure LokiShare.  
-**Android:** Native LokiShare companion, with approved HTTPS pairing and certificate pinning.  
-**License:** MIT. The productivity tools require no account, cloud service or subscription.
+**LokiVerse** is an offline-first Windows workspace for tasks, calendar planning, notes, local file tools, hardware monitoring and secure on-demand file sharing with an Android companion.
 
-## New in v0.9.0
+**Status:** v1.0.0 source ready for CI and real-device release testing. Passing automated tests are not a substitute for verifying the Windows installer and Android app on actual devices.
 
-### Weekly Planner
+## What is included
 
-- New **Weekly Planner** module on the sidebar, with a Monday–Sunday calendar, a “This week” shortcut, and previous/next week navigation (up to 52 weeks in either direction).
-- Show scheduled tasks by day and completion state; quick-create tasks for a selected date.
-- Separate **Carryover** panel for overdue tasks and **Unscheduled** panel where tasks can be assigned to any day in the visible week.
-- The home dashboard now highlights the **next 7 days**, overdue work, tasks due today, and active repeating tasks.
-- All dates use the device's **local calendar date**. The planner is a local view, not an external calendar sync.
+| Windows feature | Capabilities |
+|---|---|
+| Overview | Dashboard, progress indicators, navigation and Ctrl+K search |
+| Weekly Planner | Monday–Sunday planning, overdue tasks and local scheduling |
+| LokiTasks | Priorities, categories, due times, recurring tasks and linked notes |
+| LokiNotes | Markdown preview, folders, pinning, autosave and Markdown export |
+| LokiFiles | Scoped browsing, safe copy/rename, folder creation, duplicate detection and storage insights |
+| SystemPulse | CPU/RAM snapshots, session analytics and CSV export |
+| LokiShare | LAN HTTPS with QR fingerprint pinning, six-digit pairing approval, transfer center and scoped file access |
+| Settings | Local JSON export/restore, appearance, update check and new Workspace Health checker |
 
-### Recurring tasks and full editing
+**Android companion:** native LokiShare with QR scanning, approval, secure uploads/downloads, recent activity, transfer speed/cancellation, nearby-PC hints and current-session download recovery. There is **no cloud server** and discovery **does not authorize a device** by itself.
 
-- Choose **Never**, **Daily**, **Weekly** or **Monthly** when creating/editing a task. Recurring tasks require a due date.
-- Completing a repeating task marks that occurrence completed and automatically creates **one future occurrence**, preserving title, priority, category, due time and linked note. Missed dates are skipped rather than generating many backlogged tasks.
-- Monthly recurrence preserves its original intended day where possible (e.g., a task created for January 31 repeats on February 28, then March 31).
-- Undoing/re-completing the same occurrence **does not create duplicate future tasks**.
-- Inline task editor now supports title, category, priority, due date, due time, recurrence and linked note.
-- Existing reminder behavior remains **only while LokiVerse is running**; no OS-level background service or offline push was added.
+## New in v1.0.0
 
-### Linked LokiNotes
+- Workspace recovery now detects a **missing primary file with a valid `.bak`** and restores it instead of opening with an empty workspace.
+- Invalid JSON structure cannot silently replace your saved tasks and notes.
+- New **Settings → Workspace Health → Run Check** displays readability, item counts, modification timestamps and backup availability without changing the files.
+- Single-instance Windows lock and privileged IPC restricted to the active LokiVerse window.
+- Reduced-motion accessibility support and extended automated regression checks.
 
-- Optionally link a LokiNote when creating/editing a task.
-- Jump from a task or Planner card directly to the linked note. LokiNotes displays active tasks linked to the note.
-- When a note is deleted, its task links are cleared without deleting the tasks.
+## Getting started
 
-### Compatibility and security
+1. Requires Windows 10/11 (x64) and a compatible Android phone for the optional companion.
+2. Download the ZIP and **copy its contents into your existing local `LokiVerse` repository**, preserving `.git`.
+3. First export a JSON backup from your installed LokiVerse version. Commit the source and push to `main`.
+4. Check both GitHub Actions jobs. Only after CI succeeds, push `v1.0.0`. Download assets from your own GitHub Releases.
+5. Close the previous Windows LokiVerse and run the new installer **without manually uninstalling**. Check notes/tasks/settings, backup health and LokiShare pairing. See `docs/QA.md`.
 
-- Windows application ID `com.lokij.lokiverse`, NSIS installer configuration, user-data directory and saved-data filenames are unchanged. Existing v0.8.0 task/note records normalize safely with the new optional fields.
-- Android package ID, signing-secret configuration, secure LokiShare HTTPS pairing and certificate trust protocol are unchanged; only Android versionName/versionCode bump to `0.9.0`/`11`.
-- This version does **not** claim an Android UI or camera scanner fix. Its existing implementation still needs physical-device verification.
-- Windows installer remains **unsigned**. SmartScreen's “Unknown publisher” warning may persist. Android TEST APKs may require reinstalling if their debug signing key differs between CI builds.
+### Local testing
 
-## GitHub Actions build and release
+```bash
+npm install
+npm run check
+npm start
+```
 
-1. In installed LokiVerse, open **Settings → Export** and save your workspace backup.
-2. Extract this ZIP and copy the **contents of `LokiVerse-v0.9.0/`** into the existing local `LokiVerse` Git repo. Keep the `.git` directory intact.
-3. Run:
+On Windows, build the NSIS installer with `npm run dist:win`. Android CI runs Gradle/SDK 35 builds on GitHub Actions.
 
-   ```bash
-   npm install
-   npm run check
-   git add -A
-   git commit -m "feat: LokiVerse v0.9.0 workspace 2.0"
-   git push origin main
-   ```
+### GitHub workflow
 
-4. Verify both Windows and Android CI jobs pass, then, **only if the tag doesn't exist yet**:
+```bash
+git add -A
+git commit -m "release: LokiVerse v1.0.0 stability and data integrity"
+git push origin main
+# after both CI jobs are green and the v1.0.0 tag does not already exist:
+git tag v1.0.0
+git push origin v1.0.0
+```
 
-   ```bash
-   git tag v0.9.0
-   git push origin v0.9.0
-   ```
+Release workflow builds a Windows NSIS installer and an **Android-TEST APK**, plus SHA256 checksums. The optional release-signed Android APK is created only when all protected signing secrets are configured.
 
-5. The tag workflow should publish:
+## Important limitations
 
-   - `LokiVerse-0.9.0-Setup-x64.exe` — unsigned NSIS Windows installer.
-   - `LokiShare-0.9.0-Android-TEST.apk` — debug-signed APK whose signing key is not guaranteed stable between builds.
-   - Optional `LokiShare-0.9.0-Android-SIGNED.apk` only when your protected release-signing secrets are configured (see `docs/ANDROID_SIGNING.md`).
+- The Windows installer is **unsigned**. Microsoft SmartScreen may display **Unknown publisher**; this release does not bypass Windows protections.
+- The default Android test APK is debug signed using CI's nonpersistent key; signature mismatches can require uninstalling the previous test APK, which removes Android-local app data. For persistent Android update signing, follow `docs/ANDROID_SIGNING.md`.
+- Android QR scanner stability and local-network discovery still require verification on your particular phone/router.
+- Transfer data uses HTTPS with pinned certificate fingerprint; pair only after comparing the on-screen confirmation code. Android download recovery currently works **within the active transfer**, not after app restart.
+- Data is stored in the current user's application data directory, not GitHub. The selected LokiFiles directory must be explicitly chosen.
 
-## Tests and QA
+## More documentation
 
-**39/39 Node.js desktop/backend tests passed locally**, including seven new scheduling, migration and storage-roundtrip tests. Chromium UI smoke tests covered overview, 7-day planner, creating and editing repeating tasks, linked notes, completing tasks, and assigning dates, without JavaScript exceptions.
+`CHANGELOG.md` · `docs/QA.md` · `docs/RELEASING.md` · `docs/SECURITY.md` · `docs/ANDROID_SIGNING.md` · `docs/LOKISHARE.md`
 
-These tests **do not** prove the Windows installer or Android APK builds work; GitHub Actions must compile them. Test the in-place Windows update on your actual PC and verify your old tasks/notes remain after upgrading. See `docs/QA.md`.
-
-## Public repo safety
-
-Never commit a release signing keystore, signing passwords or secret API keys. The Android TEST APK is still distinct from a stable release-signed APK. Windows installer upgrades remain configured to reuse the same application identity, but Microsoft Defender SmartScreen reputation is a separate issue.
+MIT License · LokiJ
