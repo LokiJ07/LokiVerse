@@ -29,18 +29,29 @@ const q = selector => document.querySelector(selector);
 const panel = q('#content');
 const pages = {home:'Overview',tasks:'My Tasks',notes:'LokiNotes',files:'LokiFiles',monitor:'SystemPulse',share:'LokiShare',settings:'Settings'};
 let data = {tasks:[],notes:[],settings:{displayName:'Creator'}};
-let info = {version:'0.1.1'};
+let info = {version:'0.2.0'};
 let currentView = 'home';
 let taskFilter = 'all';
+let taskSearch = '';
+let taskCategory = 'all';
 let selectedNoteId = null;
 let noteQuery = '';
+let noteFolder = 'all';
+let notePreview = false;
 let fileListing = null;
 let fileQuery = '';
+let fileSort = 'name';
+let fileType = 'all';
+let fileScan = null;
+let fileResultsCache = [];
 let system = null;
+let cpuHistory = [];
+let ramHistory = [];
 let monitorTimer = null;
 let saveChain = Promise.resolve();
 let noteSaveTimer = null;
 let saveRevision = 0;
+let lastSaveError = false;
 let paletteVisible = false;
 let paletteQuery = '';
 let paletteItems = [];
@@ -62,6 +73,7 @@ function flushNoteEdits() {
 }
 function applyAccent() {
   document.body.dataset.accent = data.settings?.accent || 'purple';
+  document.body.classList.toggle('compact-mode', data.settings?.compactMode === true);
 }
 
 
@@ -77,9 +89,10 @@ function persist(showToast = false) {
   setSaveStatus('saving', '● Saving…');
   saveChain = saveChain.catch(() => {}).then(() => window.loki.save(snapshot));
   saveChain.then(() => {
-    if (revision === saveRevision) setSaveStatus('saved', '✓ Saved locally');
+    if (revision === saveRevision) { lastSaveError = false; setSaveStatus('saved', '✓ Saved locally'); }
     if (showToast) toast('Workspace saved locally.');
   }).catch(error => {
+    lastSaveError = true;
     setSaveStatus('error', '⚠ Save failed');
     fail(error);
   });
@@ -130,7 +143,7 @@ function renderHome() {
   panel.innerHTML = `
     ${heading('YOUR CREATIVE COMMAND CENTER',`Welcome back, ${data.settings.displayName}! ✦`,'One beautiful place for the tools that power your day.')}
     <section class="hero"><div><span class="eyebrow" style="color:#c4a9ff">✦ &nbsp; LOKIVERSE · VERSION ${escapeHtml(info.version)}</span><h2>Your space to create <strong>more.</strong></h2><p>Organize ideas, stay on top of tasks, explore files, and keep an eye on your system. All in one private, offline-first workspace.</p><button class="button button-primary" data-goto="tasks">${icon('plus')} Create a task ${icon('arrow',16)}</button></div><div class="hero-icon">L</div></section>
-    <div class="stats-grid"><div class="stat-card"><span class="stat-card-label">Total Tasks</span><div class="stat-icon">${icon('tasks')}</div><div class="stat-card-number">${data.tasks.length}</div><div class="stat-card-bottom">Your action items</div></div><div class="stat-card"><span class="stat-card-label">Notes Created</span><div class="stat-icon">${icon('notes')}</div><div class="stat-card-number">${data.notes.length}</div><div class="stat-card-bottom">Ideas saved locally</div></div><div class="stat-card"><span class="stat-card-label">Tasks Finished</span><div class="stat-icon">${icon('check')}</div><div class="stat-card-number">${completed}</div><div class="stat-card-bottom">Keep the momentum going</div></div><div class="stat-card"><span class="stat-card-label">Workspace Modules</span><div class="stat-icon">${icon('sparkles')}</div><div class="stat-card-number">4<span style="font-size:14px;color:#9390ae"> / 5</span></div><div class="stat-card-bottom">LokiShare coming later</div></div></div>
+    <div class="stats-grid"><div class="stat-card"><span class="stat-card-label">Total Tasks</span><div class="stat-icon">${icon('tasks')}</div><div class="stat-card-number">${data.tasks.length}</div><div class="stat-card-bottom">${data.tasks.filter(t=>t.category!=="General").length} organized by category</div></div><div class="stat-card"><span class="stat-card-label">Notes Created</span><div class="stat-icon">${icon('notes')}</div><div class="stat-card-number">${data.notes.length}</div><div class="stat-card-bottom">${data.notes.filter(n=>n.pinned).length} pinned ideas</div></div><div class="stat-card"><span class="stat-card-label">Tasks Finished</span><div class="stat-icon">${icon('check')}</div><div class="stat-card-number">${completed}</div><div class="stat-card-bottom">Keep the momentum going</div></div><div class="stat-card"><span class="stat-card-label">Workspace Modules</span><div class="stat-icon">${icon('sparkles')}</div><div class="stat-card-number">4<span style="font-size:14px;color:#9390ae"> / 5</span></div><div class="stat-card-bottom">LokiShare remains on roadmap</div></div></div>
     <section class="progress-summary" aria-label="Task progress"><div class="progress-summary-copy"><span class="eyebrow">TODAY AT A GLANCE</span><h3>${completionPercent}% of tasks completed</h3><p>${pending.length} active · ${completed} finished · ${overdue} overdue</p></div><div class="progress-summary-track"><span style="width:${completionPercent}%"></span></div><button class="button button-ghost" data-goto="tasks">Manage tasks ${icon('arrow',15)}</button></section>
     <div class="two-col"><div><div class="section-header"><h3>Upcoming tasks</h3><button data-goto="tasks">View all →</button></div><div class="panel">${upcoming.length ? upcoming.map(t=>`<div class="mini-task"><input type="checkbox" class="checkbox" data-complete="${escapeHtml(t.id)}" aria-label="Mark completed"><div style="min-width:0;flex:1"><div class="mini-task-title">${escapeHtml(t.title)}</div><div class="mini-task-sub">${niceDate(t.due)}</div></div><span class="task-tag ${t.priority.toLowerCase()}">${escapeHtml(t.priority)}</span></div>`).join('') : emptyState('tasks','No pending tasks — you are all caught up!')}</div></div><div><div class="section-header"><h3>Quick launch</h3><button data-goto="settings">Customize →</button></div><div class="panel"><button class="quick-link" data-goto="notes"><span class="quick-icon">${icon('notes')}</span><span><strong>LokiNotes</strong><small>Capture your next big idea</small></span><span class="arrow">→</span></button><button class="quick-link" data-goto="files"><span class="quick-icon">${icon('folder')}</span><span><strong>LokiFiles</strong><small>Browse local files and folders</small></span><span class="arrow">→</span></button><button class="quick-link" data-goto="monitor"><span class="quick-icon">${icon('activity')}</span><span><strong>SystemPulse</strong><small>Live CPU and memory insights</small></span><span class="arrow">→</span></button></div></div></div>`;
   panel.querySelectorAll('[data-complete]').forEach(box=>box.addEventListener('change',()=>toggleTask(box.dataset.complete)));
@@ -138,118 +151,210 @@ function renderHome() {
 }
 function bindGoto() { panel.querySelectorAll('[data-goto]').forEach(btn=>btn.addEventListener('click',()=>switchView(btn.dataset.goto))); }
 function toggleTask(taskId) { const task = data.tasks.find(t=>t.id===taskId); if (!task) return; task.completed=!task.completed; persist(); render(); }
+function categoryChoices(items, selected, emptyLabel='All categories') {
+  const groups=[...new Set(items.map(x=>x.category||x.folder||'General'))].sort((a,b)=>a.localeCompare(b));
+  return `<option value="all" ${selected==='all'?'selected':''}>${emptyLabel}</option>`+groups.map(g=>`<option value="${escapeHtml(g)}" ${selected===g?'selected':''}>${escapeHtml(g)}</option>`).join('');
+}
 function renderTasks() {
-  const all = data.tasks.length;
-  const shown = data.tasks.filter(t=>taskFilter==='all' || (taskFilter==='active'?!t.completed:t.completed));
-  panel.innerHTML = `${heading('STAY FOCUSED','My Tasks','Small wins add up. Plan, track, and complete the important things.',`<span class="pill">${all} TOTAL TASKS</span>`)}
-    <form id="taskForm" class="form-row"><input class="field flex-field" name="title" placeholder="What needs to be done?" required maxlength="240" autocomplete="off"><select class="field" name="priority"><option>Normal</option><option>High</option><option>Low</option></select><input class="field" name="due" type="date" aria-label="Due date"><button class="button button-primary" type="submit">${icon('plus')} Add Task</button></form>
-    <div class="filter-row"><button class="filter-chip ${taskFilter==='all'?'active':''}" data-filter="all">All (${all})</button><button class="filter-chip ${taskFilter==='active'?'active':''}" data-filter="active">Active (${data.tasks.filter(t=>!t.completed).length})</button><button class="filter-chip ${taskFilter==='completed'?'active':''}" data-filter="completed">Completed (${data.tasks.filter(t=>t.completed).length})</button></div>
-    <div class="task-list">${shown.length ? [...shown].reverse().map(t=>`<div class="task-row ${t.completed?'done':''}"><input type="checkbox" class="checkbox" data-complete="${escapeHtml(t.id)}" ${t.completed?'checked':''} aria-label="Toggle completed"><div class="task-main"><div class="task-name">${escapeHtml(t.title)}</div><div class="task-meta">${icon('calendar',12)} &nbsp;${niceDate(t.due)} &nbsp;·&nbsp; Created ${compactTime(t.createdAt)}</div></div><span class="task-tag ${t.priority.toLowerCase()}">${escapeHtml(t.priority)}</span><button class="icon-button danger-icon" data-delete-task="${escapeHtml(t.id)}" title="Delete task">${icon('trash')}</button></div>`).join('') : emptyState('check','Nothing in this list yet')}</div>`;
-  q('#taskForm').addEventListener('submit', e => {
-    e.preventDefault(); const f = new FormData(e.currentTarget), title=String(f.get('title')||'').trim(); if(!title)return;
-    data.tasks.push({id:id(),title,priority:f.get('priority'),due:String(f.get('due')||''),completed:false,createdAt:new Date().toISOString()});
-    persist(); toast('New task created.'); renderTasks();
+  const total=data.tasks.length;
+  const today=new Date();const todayKey=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
+  let shown=data.tasks.filter(t=>taskFilter==='all'||(taskFilter==='active'?!t.completed:taskFilter==='completed'?t.completed:taskFilter==='overdue'?!t.completed&&t.due&&t.due<todayKey:true));
+  shown=shown.filter(t=>(taskCategory==='all'||(t.category||'General')===taskCategory) && (t.title+' '+(t.category||'')).toLowerCase().includes(taskSearch.toLowerCase()));
+  shown.sort((a,b)=>(Number(a.completed)-Number(b.completed))||(a.due||'9999').localeCompare(b.due||'9999')||(b.createdAt||'').localeCompare(a.createdAt||''));
+  panel.innerHTML = `${heading('MAKE EVERY DAY COUNT','My Tasks','Plan with priorities, categories and optional local desktop reminders.',`<span class="pill">${total} TOTAL TASKS</span>`)}
+    <form id="taskForm" class="panel enhanced-form"><div class="form-row"><input class="field flex-field" name="title" placeholder="What needs to be done?" required maxlength="240" autocomplete="off"><select class="field" name="priority"><option>Normal</option><option>High</option><option>Low</option></select><button class="button button-primary" type="submit">${icon('plus')} Add task</button></div>
+    <div class="form-row options-row"><label class="compact-label">Category<input class="field" name="category" maxlength="40" value="General" placeholder="Project name"></label><label class="compact-label">Due date<input class="field" name="due" type="date"></label><label class="compact-label">Time (optional)<input class="field" name="dueTime" type="time"></label><small class="fine-print">Reminders: at the selected time (9:00 AM if empty), while the app is running.</small></div></form>
+    <div class="task-toolbar"><div class="filter-row">${[['all','All'],['active','Active'],['completed','Completed'],['overdue','Overdue']].map(([key,label])=>`<button class="filter-chip ${taskFilter===key?'active':''}" data-filter="${key}">${label}</button>`).join('')}</div><input id="taskSearch" class="field" type="search" placeholder="Find a task..." value="${escapeHtml(taskSearch)}"><select id="taskCategory" class="field">${categoryChoices(data.tasks,taskCategory)}</select></div>
+    <div class="task-list">${shown.length?shown.map(t=>`<div class="task-row ${t.completed?'done':''}"><input type="checkbox" class="checkbox" data-complete="${escapeHtml(t.id)}" ${t.completed?'checked':''} aria-label="Toggle completed"><div class="task-main"><div class="task-name">${escapeHtml(t.title)}</div><div class="task-meta">${icon('calendar',12)} ${escapeHtml(niceDate(t.due))}${t.dueTime?' · '+escapeHtml(t.dueTime):''} · ${escapeHtml(t.category||'General')} · ${escapeHtml(compactTime(t.createdAt))}</div></div><span class="task-tag ${t.priority.toLowerCase()}">${escapeHtml(t.priority)}</span><button class="icon-button" data-edit-task="${escapeHtml(t.id)}" title="Edit task">${icon('settings')}</button><button class="icon-button danger-icon" data-delete-task="${escapeHtml(t.id)}" title="Delete task">${icon('trash')}</button></div>`).join(''):emptyState('check','No matching tasks')}</div>`;
+  q('#taskForm').addEventListener('submit',e=>{
+    e.preventDefault();const f=new FormData(e.currentTarget),title=String(f.get('title')||'').trim();if(!title)return;
+    data.tasks.push({id:id(),title,priority:f.get('priority'),due:String(f.get('due')||''),dueTime:String(f.get('dueTime')||''),category:String(f.get('category')||'General').trim().slice(0,40)||'General',completed:false,createdAt:new Date().toISOString()});
+    persist();toast('Task created.');renderTasks();
   });
+  q('#taskSearch').addEventListener('input',e=>{taskSearch=e.target.value;const focused=q('#taskSearch');const start=focused.selectionStart;renderTasks();q('#taskSearch').focus();q('#taskSearch').setSelectionRange(start,start);});
+  q('#taskCategory').addEventListener('change',e=>{taskCategory=e.target.value;renderTasks()});
   panel.querySelectorAll('[data-complete]').forEach(b=>b.addEventListener('change',()=>toggleTask(b.dataset.complete)));
+  panel.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{taskFilter=b.dataset.filter;renderTasks()}));
+  panel.querySelectorAll('[data-edit-task]').forEach(b=>b.addEventListener('click',()=>{
+    const task=data.tasks.find(t=>t.id===b.dataset.editTask);if(!task)return;
+    const title=prompt('Edit task title',task.title);if(title===null)return;
+    if(!title.trim()){toast('Task title cannot be empty.',true);return;}
+    const category=prompt('Category',task.category||'General');if(category===null)return;
+    task.title=title.trim().slice(0,240);task.category=category.trim().slice(0,40)||'General';persist();renderTasks();
+  }));
   panel.querySelectorAll('[data-delete-task]').forEach(b=>b.addEventListener('click',()=>{if(!confirm('Delete this task?'))return;data.tasks=data.tasks.filter(t=>t.id!==b.dataset.deleteTask);persist();renderTasks();}));
-  panel.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{taskFilter=b.dataset.filter;renderTasks();}));
+}
+function renderMarkdown(value) {
+  // Escape raw HTML first. Markdown preview deliberately excludes HTML, images and active links.
+  let text=escapeHtml(value||'');
+  text=text.replace(/^### (.+)$/gm,'<h3>$1</h3>').replace(/^## (.+)$/gm,'<h2>$1</h2>').replace(/^# (.+)$/gm,'<h1>$1</h1>');
+  text=text.replace(/\*\*(.+?)\*\*/g,'<strong>$1</strong>').replace(/\*(.+?)\*/g,'<em>$1</em>')
+    .replace(/`([^`\n]+)`/g,'<code>$1</code>').replace(/^- (.+)$/gm,'<div class="md-bullet">• $1</div>');
+  return text.split(/\n\n+/).map(block=>`<div class="md-paragraph">${block.replace(/\n/g,'<br>')}</div>`).join('');
+}
+function sortedNotes() {
+  return [...data.notes].filter(n=>(noteFolder==='all'||(n.folder||'General')===noteFolder)&&
+    (n.title+' '+n.body).toLowerCase().includes(noteQuery.toLowerCase()))
+    .sort((a,b)=>Number(b.pinned)-Number(a.pinned)||(b.updatedAt||'').localeCompare(a.updatedAt||''));
+}
+function noteListHtml() {
+  const filtered=sortedNotes();
+  return filtered.length?filtered.map(n=>`<button class="note-item ${n.id===selectedNoteId?'selected':''}" data-note="${escapeHtml(n.id)}"><strong>${n.pinned?'✦ ':''}${escapeHtml(n.title||'Untitled note')}</strong><small>${escapeHtml(n.folder||'General')} · ${escapeHtml((n.body||'').replace(/\s+/g,' ').slice(0,40)||'Empty note')}</small></button>`).join(''):emptyState('notes','No notes found');
 }
 function renderNotes() {
   const selected=data.notes.find(n=>n.id===selectedNoteId);
-  const filtered=[...data.notes].filter(n=>(n.title+' '+n.body).toLowerCase().includes(noteQuery.toLowerCase())).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
-  panel.innerHTML = `${heading('YOUR IDEAS, SAFE AND SOUND','LokiNotes','A quiet place for thoughts, projects, and everything in between.',`<button class="button button-primary" id="newNote">${icon('plus')} New Note</button>`)}
-    <div class="note-layout"><section class="panel note-sidebar"><input class="field search" id="noteSearch" type="search" placeholder="Search notes..." value="${escapeHtml(noteQuery)}"><div id="noteList">${filtered.length ? filtered.map(n=>`<button class="note-item ${n.id===selectedNoteId?'selected':''}" data-note="${escapeHtml(n.id)}"><strong>${escapeHtml(n.title||'Untitled note')}</strong><small>${escapeHtml((n.body||'').replace(/\s+/g,' ').slice(0,45)||'Empty note')} · ${compactTime(n.updatedAt)}</small></button>`).join('') : emptyState('notes','No notes found')}</div></section>
-    <section class="panel note-editor">${selected ? `<input id="noteTitle" maxlength="140" placeholder="Untitled note" value="${escapeHtml(selected.title)}"><textarea id="noteBody" maxlength="100000" placeholder="Let your ideas flow..."></textarea><div class="editor-bottom"><span><span id="noteStatus">All changes saved locally</span> <span id="noteCount" class="word-count"></span></span><button id="deleteNote" class="button button-danger">${icon('trash')} Delete Note</button></div>` : `<div class="empty" style="margin:auto">${icon('notes',32)}<strong>Your thoughts, your universe.</strong><p>Create a note or select one from the list.</p></div>`}</section></div>`;
-  if (selected) { q('#noteBody').value=selected.body; updateNoteCount(); }
+  panel.innerHTML=`${heading('CAPTURE · ORGANIZE · CREATE','LokiNotes','Notes with folders, pinned ideas, Markdown formatting and safe local preview.',`<button class="button button-primary" id="newNote">${icon('plus')} New note</button>`)}
+    <div class="note-layout"><section class="panel note-sidebar"><input class="field search" id="noteSearch" type="search" placeholder="Search notes..." value="${escapeHtml(noteQuery)}"><select id="noteFolderFilter" class="field note-folder-select">${categoryChoices(data.notes.map(n=>({category:n.folder||'General'})),noteFolder,'All folders')}</select><div id="noteList">${noteListHtml()}</div></section>
+    <section class="panel note-editor">${selected?`<div class="note-editor-top"><input id="noteTitle" maxlength="140" placeholder="Untitled note" value="${escapeHtml(selected.title)}"><button class="button button-ghost" id="pinNote">${selected.pinned?'✦ Pinned':'☆ Pin'}</button></div><div class="note-tools"><label class="compact-label">Folder<input id="noteFolder" class="field" maxlength="40" value="${escapeHtml(selected.folder||'General')}" placeholder="Folder name"></label><div class="note-tabs"><button id="editNote" class="filter-chip ${!notePreview?'active':''}">Edit</button><button id="previewNote" class="filter-chip ${notePreview?'active':''}">Preview</button></div></div><div id="markdownToolbar" class="markdown-toolbar" ${notePreview?'hidden':''}><button class="format-btn" data-format="bold" title="Bold">B</button><button class="format-btn" data-format="italic" title="Italic"><i>I</i></button><button class="format-btn" data-format="heading" title="Heading">H1</button><button class="format-btn" data-format="bullet" title="Bullet">• List</button><span class="fine-print">Markdown supported · **bold**, *italic*, # heading</span></div><textarea id="noteBody" maxlength="100000" placeholder="Let your ideas flow..." ${notePreview?'hidden':''}></textarea><div id="noteRendered" class="markdown-preview" ${!notePreview?'hidden':''}>${renderMarkdown(selected.body)}</div><div class="editor-bottom"><span><span id="noteStatus">Saved locally</span> <span id="noteCount" class="word-count"></span></span><button id="deleteNote" class="button button-danger">${icon('trash')} Delete</button></div>`: `<div class="empty" style="margin:auto">${icon('notes',32)}<strong>Your thoughts, your universe.</strong><p>Create a note or select one.</p></div>`}</section></div>`;
+  if(selected){q('#noteBody').value=selected.body;updateNoteCount();}
   q('#newNote').addEventListener('click',()=>{
-    const note={id:id(),title:'Untitled note',body:'',updatedAt:new Date().toISOString()};data.notes.push(note);selectedNoteId=note.id;noteQuery='';persist();renderNotes();q('#noteTitle').focus();q('#noteTitle').select();
+    const note={id:id(),title:'Untitled note',body:'',folder:noteFolder==='all'?'General':noteFolder,pinned:false,updatedAt:new Date().toISOString()};
+    data.notes.push(note);selectedNoteId=note.id;noteQuery='';notePreview=false;persist();renderNotes();q('#noteTitle').focus();q('#noteTitle').select();
   });
   q('#noteSearch').addEventListener('input',e=>{noteQuery=e.target.value;updateNoteList();});
-  panel.querySelectorAll('[data-note]').forEach(b=>b.addEventListener('click',()=>selectNote(b.dataset.note)));
-  if(selected) {
-    const onEdit=()=>{
-      selected.title=q('#noteTitle').value;selected.body=q('#noteBody').value;selected.updatedAt=new Date().toISOString();
-      q('#noteStatus').textContent='Saving changes...';
-      setSaveStatus('saving', '● Saving…');
-      updateNoteCount();
-      if(noteSaveTimer)clearTimeout(noteSaveTimer);
-      noteSaveTimer=setTimeout(async()=>{noteSaveTimer=null;try{await persist();const status=q('#noteStatus');if(status)status.textContent='Saved locally ✓';updateNoteList();}catch(error){fail(error);}},230);
-    };
-    q('#noteTitle').addEventListener('input',onEdit);q('#noteBody').addEventListener('input',onEdit);
-    q('#deleteNote').addEventListener('click',()=>{if(!confirm('Delete this note?'))return;data.notes=data.notes.filter(n=>n.id!==selected.id);selectedNoteId=data.notes[0]?.id||null;persist();renderNotes();});
-  }
+  q('#noteFolderFilter').addEventListener('change',e=>{noteFolder=e.target.value;updateNoteList();});
+  bindNoteItems();
+  if(!selected)return;
+  const onEdit=()=>{
+    selected.title=q('#noteTitle').value;selected.body=q('#noteBody').value;selected.folder=q('#noteFolder').value.trim().slice(0,40)||'General';selected.updatedAt=new Date().toISOString();
+    q('#noteStatus').textContent='Saving changes...';setSaveStatus('saving','● Saving…');updateNoteCount();
+    if(noteSaveTimer)clearTimeout(noteSaveTimer);
+    noteSaveTimer=setTimeout(async()=>{noteSaveTimer=null;try{await persist();const status=q('#noteStatus');if(status)status.textContent='Saved locally ✓';updateNoteList();}catch(error){fail(error);}},230);
+  };
+  ['noteTitle','noteBody','noteFolder'].forEach(id=>q('#'+id).addEventListener('input',onEdit));
+  q('#pinNote').addEventListener('click',()=>{selected.pinned=!selected.pinned;persist();renderNotes();});
+  q('#editNote').addEventListener('click',()=>{notePreview=false;renderNotes();});
+  q('#previewNote').addEventListener('click',()=>{flushNoteEdits();notePreview=true;renderNotes();});
+  panel.querySelectorAll('[data-format]').forEach(btn=>btn.addEventListener('click',()=>{
+    const area=q('#noteBody'),a=area.selectionStart,b=area.selectionEnd,selection=area.value.slice(a,b)||'text';
+    const fmt=btn.dataset.format;
+    const wrapper=fmt==='bold'?`**${selection}**`:fmt==='italic'?`*${selection}*`:fmt==='heading'?`# ${selection}`:`- ${selection}`;
+    area.setRangeText(wrapper,a,b,'select');area.dispatchEvent(new Event('input',{bubbles:true}));area.focus();
+  }));
+  q('#deleteNote').addEventListener('click',()=>{if(!confirm('Delete this note?'))return;data.notes=data.notes.filter(n=>n.id!==selected.id);selectedNoteId=data.notes[0]?.id||null;persist();renderNotes();});
 }
-function selectNote(noteId) { flushNoteEdits(); selectedNoteId=noteId;renderNotes(); }
-function updateNoteCount() { const target=q('#noteCount'), body=q('#noteBody'); if(target&&body) {const words=body.value.trim()?body.value.trim().split(/\s+/).length:0;target.textContent=` · ${words} words`; } }
-function updateNoteList() {
-  const filtered=[...data.notes].filter(n=>(n.title+' '+n.body).toLowerCase().includes(noteQuery.toLowerCase())).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
-  const list=q('#noteList');if(!list)return;
-  list.innerHTML=filtered.length ? filtered.map(n=>`<button class="note-item ${n.id===selectedNoteId?'selected':''}" data-note="${escapeHtml(n.id)}"><strong>${escapeHtml(n.title||'Untitled note')}</strong><small>${escapeHtml((n.body||'').replace(/\s+/g,' ').slice(0,45)||'Empty note')} · ${compactTime(n.updatedAt)}</small></button>`).join('') : emptyState('search','No notes match your search');
-  list.querySelectorAll('[data-note]').forEach(b=>b.addEventListener('click',()=>selectNote(b.dataset.note)));
-}
+function selectNote(noteId){flushNoteEdits();selectedNoteId=noteId;renderNotes();}
+function updateNoteCount(){const el=q('#noteCount');if(el){const body=q('#noteBody')?.value||'';el.textContent=` · ${body.trim()?body.trim().split(/\s+/).length:0} words`;}}
+function updateNoteList(){const list=q('#noteList');if(!list)return;list.innerHTML=noteListHtml();bindNoteItems();}
+function bindNoteItems(){panel.querySelectorAll('[data-note]').forEach(b=>b.addEventListener('click',()=>selectNote(b.dataset.note)));}
 async function browseFiles(relative='') {
-  try {fileListing=await window.loki.listFiles(relative);fileQuery='';if(currentView==='files')renderFiles();}
+  try{fileListing=await window.loki.listFiles(relative);fileQuery='';fileScan=null;if(currentView==='files')renderFiles();}
   catch(error){fail(error);}
 }
-function renderFiles() {
-  panel.innerHTML=`${heading('YOUR FILES, SIMPLIFIED','LokiFiles','A safe, read-only file explorer. Open folders and files without moving or deleting anything.',`<button class="button button-primary" id="pickFolder">${icon('folder')} Choose Folder</button>`)}
-    <section class="panel"><div class="folder-toolbar"><button class="button button-ghost" id="goParent" ${!fileListing||!fileListing.relative?'disabled':''} title="Go up">${icon('back')} Up</button><div class="folder-path">${fileListing?escapeHtml(fileListing.root+(fileListing.relative?'\\'+fileListing.relative:'')):'No folder selected'}</div><input id="fileSearch" class="field" type="search" placeholder="Search here..." value="${escapeHtml(fileQuery)}" ${!fileListing?'disabled':''}></div><div id="fileResults">${fileListing?fileResultsHtml():emptyState('folder','Choose a folder to start browsing')}</div></section>`;
+function matchFileType(item) {
+  if(fileType==='all') return true;
+  if(fileType==='folders') return item.directory;
+  if(item.directory) return false;
+  const ext=(item.name.split('.').pop()||'').toLowerCase();
+  const formats={docs:['pdf','doc','docx','txt','md','csv','xlsx','xls','ppt','pptx'],images:['jpg','jpeg','png','webp','gif','bmp','svg'],audio:['mp3','wav','flac','ogg','m4a'],video:['mp4','mkv','mov','webm','avi']};
+  return (formats[fileType]||[]).includes(ext);
+}
+function sortedFiles(){
+  if(!fileListing)return [];
+  const items=fileScan?fileScan.results:fileListing.entries.filter(x=>x.name.toLowerCase().includes(fileQuery.toLowerCase()));
+  return [...items].filter(matchFileType).sort((a,b)=>Number(b.directory)-Number(a.directory)||(
+    fileSort==='modified'?String(b.modified).localeCompare(String(a.modified)):
+    fileSort==='size'?(b.size||0)-(a.size||0):a.name.localeCompare(b.name)));
+}
+function renderFiles(){
+  panel.innerHTML=`${heading('EXPLORE MORE · STAY IN CONTROL','LokiFiles','Browse, search subfolders, spot duplicates, organize folders and rename items.',`<button class="button button-primary" id="pickFolder">${icon('folder')} Choose folder</button>`)}
+    <section class="panel files-panel"><div class="folder-toolbar"><button class="button button-ghost" id="goParent" ${!fileListing||!fileListing.relative?'disabled':''}>${icon('back')} Up</button><div class="folder-path">${fileListing?escapeHtml(fileListing.root+(fileListing.relative?'\\'+fileListing.relative:'')):'No folder selected'}</div><button class="button button-ghost" id="newFolder" ${!fileListing?'disabled':''}>${icon('plus')} Folder</button></div>
+    <div class="file-tools"><input id="fileSearch" class="field flex-field" type="search" placeholder="Search current folder..." value="${escapeHtml(fileQuery)}" ${!fileListing?'disabled':''}><select id="fileType" class="field">${[['all','All types'],['folders','Folders'],['docs','Documents'],['images','Images'],['audio','Audio'],['video','Videos']].map(([val,label])=>`<option value="${val}" ${fileType===val?'selected':''}>${label}</option>`).join('')}</select><select id="fileSort" class="field"><option value="name" ${fileSort==='name'?'selected':''}>Name</option><option value="modified" ${fileSort==='modified'?'selected':''}>Recently modified</option><option value="size" ${fileSort==='size'?'selected':''}>Largest</option></select></div>
+    <div class="file-tools scan-tools"><button class="button button-ghost" id="deepSearch" ${!fileListing?'disabled':''}>${icon('search')} Search subfolders</button><button class="button button-ghost" id="findDuplicates" ${!fileListing?'disabled':''}>${icon('harddrive')} Find duplicates</button><button class="button button-ghost" id="clearScan" ${!fileScan?'disabled':''}>Current folder</button><span class="fine-print">Scans selected root only · capped to protect system performance</span></div><div id="fileResults">${fileListing?fileResultsHtml():emptyState('folder','Choose a folder to get started')}</div></section>`;
   q('#pickFolder').addEventListener('click',async()=>{try{const result=await window.loki.selectFolder();if(!result.canceled)await browseFiles('');}catch(e){fail(e)}});
-  q('#goParent').addEventListener('click',()=>{if(!fileListing)return;const parts=fileListing.relative.split(/[\\/]/).filter(Boolean);parts.pop();browseFiles(parts.join('\\'));});
-  q('#fileSearch').addEventListener('input',e=>{fileQuery=e.target.value;updateFileResults();});
+  q('#goParent').addEventListener('click',()=>{const parts=(fileListing?.relative||'').split(/[\\/]/).filter(Boolean);parts.pop();browseFiles(parts.join('\\'));});
+  q('#fileSearch').addEventListener('input',e=>{fileQuery=e.target.value;if(!fileScan)updateFileResults();});
+  q('#fileSort').addEventListener('change',e=>{fileSort=e.target.value;updateFileResults();});
+  q('#fileType').addEventListener('change',e=>{fileType=e.target.value;updateFileResults();});
+  q('#newFolder').addEventListener('click',async()=>{
+    const name=prompt('Name of your new folder');if(name===null)return;
+    try{await window.loki.createFolder(fileListing.relative,name.trim());toast('Folder created.');await browseFiles(fileListing.relative);}catch(e){fail(e)}
+  });
+  q('#deepSearch').addEventListener('click',async()=>{
+    const term=prompt('Search file/folder names in all subfolders of the selected root:',fileQuery);
+    if(term===null||!term.trim()){toast('Enter a search term first.');return;}await runScan({query:term.trim(),duplicates:false});
+  });
+  q('#findDuplicates').addEventListener('click',async()=>{await runScan({duplicates:true});});
+  q('#clearScan').addEventListener('click',()=>{fileScan=null;fileQuery='';renderFiles();});
   bindFileResults();
+}
+async function runScan(options){
+  const output=q('#fileResults');if(output)output.innerHTML='<div class="scan-loading">Scanning selected folder... Please keep LokiVerse open.</div>';
+  try{const result=await window.loki.scanFiles(options);fileScan=result;if(currentView==='files')updateFileResults();}
+  catch(error){fail(error);if(currentView==='files')updateFileResults();}
 }
 function fileResultsHtml(){
   if(!fileListing)return '';
-  const shown=fileListing.entries.filter(x=>x.name.toLowerCase().includes(fileQuery.toLowerCase()));
-  return `<div class="fine-print" style="margin-bottom:15px">${fileListing.entries.length} item(s) ${fileListing.truncated?'· Showing first 1,500':''} · Open folders with one click</div>${shown.length?`<div style="overflow:auto"><table class="files-table"><thead><tr><th>NAME</th><th>TYPE</th><th>SIZE</th><th>MODIFIED</th><th>ACTIONS</th></tr></thead><tbody>${shown.map((f,i)=>`<tr><td class="name-cell"><span class="file-icon">${icon(f.directory?'folder':'file')}</span><button class="file-open" data-file="${i}">${escapeHtml(f.name)}</button></td><td>${f.directory?'Folder':escapeHtml((f.name.split('.').pop()||'File').toUpperCase())}</td><td>${f.directory?'—':bytes(f.size)}</td><td>${niceDate(f.modified)}</td><td><div class="file-actions"><button class="icon-button" data-reveal="${i}" title="Show in Explorer">${icon('external')}</button></div></td></tr>`).join('')}</tbody></table></div>`:emptyState('search','No matching files')}`;
+  let shown;
+  if(fileScan?.mode==='duplicates') shown=fileScan.groups.flatMap((group,index)=>group.map(f=>({...f,duplicateGroup:index+1}))).filter(matchFileType);
+  else shown=sortedFiles();
+  fileResultsCache=shown;
+  const message=fileScan?(fileScan.mode==='duplicates'?`${fileScan.groups.length} duplicate group(s) · ${fileScan.hashed} files hashed`:`${shown.length} matches in selected root`)+` · ${fileScan.scanned} scanned${fileScan.truncated?' · LIMIT REACHED, results partial':''}${fileScan.skipped?' · '+fileScan.skipped+' skipped':''}`:`${fileListing.entries.length} item(s)${fileListing.truncated?' · Showing first 1,500':''}`;
+  return `<div class="scan-summary">${escapeHtml(message)}</div>${shown.length?`<div class="table-scroll"><table class="files-table"><thead><tr><th>NAME</th><th>TYPE / GROUP</th><th>SIZE</th><th>MODIFIED</th><th>ACTIONS</th></tr></thead><tbody>${shown.map((f,i)=>`<tr><td class="name-cell"><span class="file-icon">${icon(f.directory?'folder':'file')}</span><button class="file-open" data-file="${i}" title="${escapeHtml(f.relative)}">${escapeHtml(f.name)}</button>${fileScan?`<small class="file-path-hint">${escapeHtml(f.relative)}</small>`:''}</td><td>${f.duplicateGroup?'Duplicate #'+f.duplicateGroup:f.directory?'Folder':escapeHtml((f.name.split('.').pop()||'File').toUpperCase())}</td><td>${f.directory?'—':bytes(f.size)}</td><td>${niceDate(f.modified)}</td><td><div class="file-actions"><button class="icon-button" data-reveal="${i}" title="Show in Explorer">${icon('external')}</button>${!fileScan?`<button class="icon-button" data-rename="${i}" title="Rename item">${icon('settings')}</button>`:''}</div></td></tr>`).join('')}</tbody></table></div>`:emptyState('search',fileScan?'No matches found':'No files in this folder')}`;
 }
-function visibleFiles(){return fileListing?fileListing.entries.filter(x=>x.name.toLowerCase().includes(fileQuery.toLowerCase())):[];}
-function updateFileResults(){q('#fileResults').innerHTML=fileResultsHtml();bindFileResults();}
+function updateFileResults(){const el=q('#fileResults');if(el){el.innerHTML=fileResultsHtml();bindFileResults();}}
 function bindFileResults(){
   panel.querySelectorAll('[data-file]').forEach(b=>b.addEventListener('click',async()=>{
-    const item=visibleFiles()[Number(b.dataset.file)];if(!item)return;
-    try{if(item.directory)await browseFiles(item.relative);else await window.loki.openFile(item.relative);}catch(e){fail(e)}
+    const item=fileResultsCache[Number(b.dataset.file)];if(!item)return;
+    try{if(item.directory){await browseFiles(item.relative);}else await window.loki.openFile(item.relative);}catch(e){fail(e)}
   }));
   panel.querySelectorAll('[data-reveal]').forEach(b=>b.addEventListener('click',async()=>{
-    const item=visibleFiles()[Number(b.dataset.reveal)];if(!item)return;
-    try{await window.loki.revealFile(item.relative)}catch(e){fail(e)}
+    const item=fileResultsCache[Number(b.dataset.reveal)];if(!item)return;
+    try{await window.loki.revealFile(item.relative);}catch(e){fail(e)}
+  }));
+  panel.querySelectorAll('[data-rename]').forEach(b=>b.addEventListener('click',async()=>{
+    const item=fileResultsCache[Number(b.dataset.rename)];if(!item)return;
+    const name=prompt('Rename file or folder:',item.name);if(name===null||name===item.name)return;
+    try{await window.loki.renameFile(item.relative,name.trim());toast('Item renamed.');await browseFiles(fileListing.relative);}catch(e){fail(e)}
   }));
 }
+function sparkline(points, label){
+  const samples=points.slice(-40);if(samples.length<2)return '<span class="fine-print">Gathering history…</span>';
+  const coords=samples.map((v,i)=>`${(i/(39||1)*100).toFixed(1)},${(100-v).toFixed(1)}`).join(' ');
+  return `<svg class="history-chart" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(label)} history"><polyline points="${coords}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
+}
 function renderMonitor(){
-  panel.innerHTML=`${heading('LIVE SYSTEM INSIGHTS','SystemPulse','A lightweight look at your PC. Refreshes automatically every 3 seconds.',`<span class="pill">${icon('activity',13)} LIVE MONITORING</span>`)}
-    <div class="monitor-grid"><div class="panel metric-panel"><span class="eyebrow">PROCESSOR LOAD</span><div class="big-number" id="cpuPercent">—<small>%</small></div><div class="progress-track"><div class="progress-fill" id="cpuBar"></div></div><p class="fine-print">Current overall CPU usage (estimated from system counters).</p></div><div class="panel metric-panel"><span class="eyebrow">MEMORY USAGE</span><div class="big-number" id="ramPercent">—<small>%</small></div><div class="progress-track"><div class="progress-fill green" id="ramBar"></div></div><p class="fine-print" id="ramDetails">Reading system memory...</p></div></div>
-    <div class="section-header"><h3>Device information</h3></div><div class="panel" id="systemDetails">${emptyState('activity','Gathering system information...')}</div>
-    <p class="fine-print" style="margin-top:16px">Temperature, power consumption, GPU telemetry and disk health require additional hardware-specific integrations and are not available in this initial release.</p>`;
-  refreshStats(); monitorTimer=setInterval(()=>{if(currentView==='monitor')refreshStats();},3000);
+  panel.innerHTML=`${heading('LIVE · PRIVATE · LOCAL','SystemPulse','CPU, RAM and primary-drive statistics, refreshed every 3 seconds.',`<span class="pill">${icon('activity',13)} LIVE</span>`)}
+    <div class="monitor-grid"><div class="panel metric-panel"><span class="eyebrow">CPU UTILIZATION</span><div class="big-number" id="cpuPercent">—<small>%</small></div><div class="progress-track"><div class="progress-fill" id="cpuBar"></div></div><div id="cpuChart" class="chart-wrap">${sparkline(cpuHistory,'CPU')}</div></div><div class="panel metric-panel"><span class="eyebrow">MEMORY USAGE</span><div class="big-number" id="ramPercent">—<small>%</small></div><div class="progress-track"><div class="progress-fill green" id="ramBar"></div></div><div id="ramChart" class="chart-wrap">${sparkline(ramHistory,'RAM')}</div><p class="fine-print" id="ramDetails">Reading memory…</p></div></div>
+    <div class="section-header"><h3>Device insights</h3></div><div class="panel device-insights" id="systemDetails">${emptyState('activity','Gathering system details...')}</div>
+    <p class="fine-print">Charts show recent sampled utilization while SystemPulse is open. Disk figures cover the drive containing your user folder, not every drive. Temperature/GPU telemetry is not supported.</p>`;
+  refreshStats();monitorTimer=setInterval(()=>{if(currentView==='monitor')refreshStats();},3000);
 }
 async function refreshStats(){
   try{
-    system=await window.loki.stats();if(currentView!=='monitor')return;
-    const cpu=system.cpu==null?'—':String(system.cpu),ram=Math.round(100*system.memoryUsed/system.memoryTotal);
-    q('#cpuPercent').innerHTML=`${cpu}<small>%</small>`;q('#cpuBar').style.width=`${system.cpu||0}%`;
+    const result=await window.loki.stats();if(currentView!=='monitor')return;system=result;
+    const cpu=system.cpu==null?null:Math.round(system.cpu),ram=system.memoryTotal?Math.round(100*system.memoryUsed/system.memoryTotal):0;
+    if(cpu!==null)cpuHistory.push(cpu);ramHistory.push(ram);cpuHistory=cpuHistory.slice(-40);ramHistory=ramHistory.slice(-40);
+    q('#cpuPercent').innerHTML=`${cpu??'—'}<small>%</small>`;q('#cpuBar').style.width=`${cpu||0}%`;
     q('#ramPercent').innerHTML=`${ram}<small>%</small>`;q('#ramBar').style.width=`${ram}%`;
-    q('#ramDetails').textContent=`${bytes(system.memoryUsed)} used of ${bytes(system.memoryTotal)} installed system memory`;
-    q('#systemDetails').innerHTML=[['Computer name',system.hostname],['Processor',system.cpuName],['Logical processors',system.cores],['Operating system',system.platform],['System uptime',`${Math.floor(system.uptime/3600)}h ${Math.floor((system.uptime%3600)/60)}m`]].map(([a,b])=>`<div class="detail-row"><span>${escapeHtml(a)}</span><strong>${escapeHtml(b)}</strong></div>`).join('');
-  }catch(error){if(currentView==='monitor')fail(error)}
+    q('#ramDetails').textContent=`${bytes(system.memoryUsed)} of ${bytes(system.memoryTotal)} in use`;
+    q('#cpuChart').innerHTML=sparkline(cpuHistory,'CPU');q('#ramChart').innerHTML=sparkline(ramHistory,'RAM');
+    const disk=system.disk;
+    const rows=[['Computer',system.hostname],['Processor',system.cpuName],['Logical CPUs',system.cores],['Operating system',system.platform],['Uptime',`${Math.floor(system.uptime/3600)}h ${Math.floor((system.uptime%3600)/60)}m`]];
+    if(disk){rows.push(['User drive',disk.location],['Drive free / total',`${bytes(disk.free)} free of ${bytes(disk.total)}`]);}
+    q('#systemDetails').innerHTML=rows.map(([a,b])=>`<div class="detail-row"><span>${escapeHtml(a)}</span><strong>${escapeHtml(b)}</strong></div>`).join('');
+  }catch(error){if(currentView==='monitor')fail(error);}
 }
 function renderShare(){
   panel.innerHTML=`${heading('THE NEXT CONNECTION','LokiShare','Our upcoming direct Wi-Fi file sharing module.')}
-    <div class="center-card"><div class="giant-icon">${icon('share')}</div><span class="eyebrow">COMING IN A FUTURE RELEASE</span><h2>Share files. Not your privacy.</h2><p>We are planning direct Android ↔ Windows file transfer over the same local network, without cloud accounts. This feature is <strong>not yet implemented</strong> in v0.1.1.</p></div>
+    <div class="center-card"><div class="giant-icon">${icon('share')}</div><span class="eyebrow">COMING IN A FUTURE RELEASE</span><h2>Share files. Not your privacy.</h2><p>We are planning direct Android ↔ Windows file transfer over the same local network, without cloud accounts. This feature is <strong>not yet implemented</strong> in v0.2.0.</p></div>
     <div class="roadmap"><div class="roadmap-card"><div class="roadmap-icon">${icon('shield')}</div><h3>Secure pairing</h3><p>Pair devices with a one-time code or QR scan before transferring files.</p></div><div class="roadmap-card"><div class="roadmap-icon">${icon('share')}</div><h3>Direct transfers</h3><p>Send files over local Wi-Fi, even when the internet is disconnected.</p></div><div class="roadmap-card"><div class="roadmap-icon">${icon('activity')}</div><h3>Live progress</h3><p>Track the status of incoming and outgoing transfers in real time.</p></div></div>`;
 }
 function renderSettings(){
   panel.innerHTML=`${heading('MAKE IT YOURS','Settings','Manage your workspace, local backups, and app updates.')}
     <section class="panel setting-card"><div class="setting-line"><div><h3>Display name</h3><p>Make your workspace feel like your own.</p></div></div><form id="nameForm" class="settings-form"><input id="displayName" class="field flex-field" maxlength="50" value="${escapeHtml(data.settings.displayName)}" required><button class="button button-primary" type="submit">Save Name</button></form></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Accent color</h3><p>Personalize LokiVerse without changing your local data.</p></div></div><div class="accent-options" role="group" aria-label="Accent color"><button class="accent-option ${data.settings.accent==='purple'?'selected':''}" data-accent="purple"><span class="accent-dot purple-dot"></span> Aurora purple</button><button class="accent-option ${data.settings.accent==='cyan'?'selected':''}" data-accent="cyan"><span class="accent-dot cyan-dot"></span> Arctic cyan</button><button class="accent-option ${data.settings.accent==='sunset'?'selected':''}" data-accent="sunset"><span class="accent-dot sunset-dot"></span> Sunset rose</button></div></section>
-    <section class="panel setting-card"><div class="setting-line"><div><h3>Local backups</h3><p>Tasks and notes are saved on this PC. Export a JSON backup or restore an earlier backup.</p></div><div style="display:flex;gap:9px"><button class="button" id="exportBackup">${icon('download')} Export</button><button class="button button-ghost" id="importBackup">${icon('upload')} Restore</button></div></div></section>
+    <section class="panel setting-card"><div class="setting-line"><div><h3>Workspace preferences</h3><p>Reminders appear while LokiVerse is running. Compact mode fits more content on screen.</p></div><div class="setting-toggles"><label><input id="remindersEnabled" type="checkbox" ${data.settings.reminders!==false?'checked':''}> Task reminders</label><label><input id="compactEnabled" type="checkbox" ${data.settings.compactMode?'checked':''}> Compact layout</label></div></div></section>
+    <section class="panel setting-card"><div class="setting-line"><div><h3>Local backups</h3><p>Tasks, categories, notes, and settings are saved locally. Export a JSON backup or restore an earlier backup.</p></div><div style="display:flex;gap:9px"><button class="button" id="exportBackup">${icon('download')} Export</button><button class="button button-ghost" id="importBackup">${icon('upload')} Restore</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Version & updates</h3><p>Installed version: <strong>v${escapeHtml(info.version)}</strong>. New Windows installers update over the existing installation. GitHub Releases are publicly available without an app signing secret.</p><p id="updateMessage" class="fine-print"></p></div><div style="display:flex;gap:9px"><button class="button" id="checkUpdate">${icon('refresh')} Check Updates</button><button class="button button-ghost" id="releasePage">${icon('external')} Releases</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Your storage</h3><p>Saved data folder: <strong>${escapeHtml(info.dataDirectory||'Local app data')}</strong></p><p>Files and notes stay on your computer unless you export or share them.</p></div><button class="button button-ghost" id="openDataFolder">${icon('folder')} Open Folder</button></div></section>
-    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.1.1.</div>`;
+    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.2.0.</div>`;
   q('#nameForm').addEventListener('submit',e=>{e.preventDefault();data.settings.displayName=q('#displayName').value.trim().slice(0,50)||'Creator';persist(true);renderSettings();});
   panel.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>{data.settings.accent=btn.dataset.accent;applyAccent();persist(true);renderSettings();}));
+  q('#remindersEnabled').addEventListener('change',e=>{data.settings.reminders=e.target.checked;persist(true);});
+  q('#compactEnabled').addEventListener('change',e=>{data.settings.compactMode=e.target.checked;applyAccent();persist(true);});
   q('#exportBackup').addEventListener('click',async()=>{try{const result=await window.loki.exportBackup();if(!result.canceled)toast('Backup exported successfully.')}catch(e){fail(e)}});
-  q('#importBackup').addEventListener('click',async()=>{try{await flushNoteEdits();const result=await window.loki.importBackup();if(!result.canceled){data=result.data;selectedNoteId=null;applyAccent();setSaveStatus('saved','✓ Saved locally');toast('Workspace restored.');renderSettings();}}catch(e){fail(e)}});
+  q('#importBackup').addEventListener('click',async()=>{try{await flushNoteEdits();const result=await window.loki.importBackup();if(!result.canceled){data=result.data;selectedNoteId=null;noteFolder='all';taskCategory='all';applyAccent();setSaveStatus('saved','✓ Saved locally');toast('Workspace restored.');renderSettings();}}catch(e){fail(e)}});
   q('#checkUpdate').addEventListener('click',checkUpdate);
   q('#releasePage').addEventListener('click',()=>window.loki.openReleases().catch(fail));
   q('#openDataFolder').addEventListener('click',()=>window.loki.openDataFolder().catch(fail));
@@ -320,7 +425,7 @@ async function main(){
   q('#paletteInput').addEventListener('input',event=>{paletteQuery=event.target.value;paletteIndex=0;renderPaletteResults();});
   q('#paletteInput').addEventListener('keydown',handlePaletteKey);
   document.addEventListener('keydown', handleShortcuts);
-  window.loki.onCloseRequest(async()=>{try{await flushNoteEdits();await window.loki.completeClose(true);}catch(error){fail(error);window.loki.completeClose(false).catch(fail);}});
+  window.loki.onCloseRequest(async()=>{try{await flushNoteEdits();await window.loki.completeClose(!lastSaveError);}catch(error){fail(error);window.loki.completeClose(false).catch(fail);}});
   try{
     const loaded=await Promise.all([window.loki.load(),window.loki.info()]);data=loaded[0];info=loaded[1];
     q('#sidebarVersion').textContent=`v${info.version}`;

@@ -14,15 +14,20 @@ function normalizeData(raw) {
       completed: x.completed === true,
       priority: ['Low','Normal','High'].includes(x.priority) ? x.priority : 'Normal',
       due: /^\d{4}-\d{2}-\d{2}$/.test(x.due || '') ? x.due : '',
-      createdAt: trimText(x.createdAt, 40)
+      createdAt: trimText(x.createdAt, 40),
+      category: trimText(x.category, 40) || 'General',
+      dueTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(x.dueTime || '') ? x.dueTime : ''
     })).filter(x => x.title),
     notes: notes.filter(x => x && typeof x === 'object' && typeof x.id === 'string').map(x => ({
       id: trimText(x.id, 100), title: trimText(x.title, 140),
-      body: trimText(x.body, 100000), updatedAt: trimText(x.updatedAt, 40)
+      body: trimText(x.body, 100000), updatedAt: trimText(x.updatedAt, 40),
+      folder: trimText(x.folder, 40) || 'General', pinned: x.pinned === true
     })),
     settings: {
       displayName: trimText(object.settings?.displayName, 50) || 'Creator',
-      accent: ['purple', 'cyan', 'sunset'].includes(object.settings?.accent) ? object.settings.accent : 'purple'
+      accent: ['purple', 'cyan', 'sunset'].includes(object.settings?.accent) ? object.settings.accent : 'purple',
+      reminders: object.settings?.reminders !== false,
+      compactMode: object.settings?.compactMode === true
     }
   };
 }

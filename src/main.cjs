@@ -1,11 +1,13 @@
 'use strict';
-const { app, BrowserWindow, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, dialog, ipcMain, shell, Notification } = require('electron');
 const fs = require('node:fs/promises');
 const path = require('node:path');
 const https = require('node:https');
 const os = require('node:os');
 const { compareVersions, isWithinFolder } = require('./shared/logic.cjs');
 const { createStorage } = require('./shared/storage.cjs');
+const { createFileOps } = require('./shared/fileops.cjs');
+const { dueReminders } = require('./shared/reminders.cjs');
 
 // Keep this identifier, package.json build.appId, and productName stable across releases.
 // Electron's userData directory is likewise kept stable: installs preserve tasks and notes.
@@ -18,6 +20,9 @@ let workspaceRecovery = null;
 let allowingClose = false;
 let waitingForClose = false;
 let closeTimeout = null;
+const notifiedTasks = new Set();
+let reminderBusy = false;
+let remindersLoaded = false;
 
 function dataFile() { return path.join(app.getPath('userData'), 'lokiverse-data.json'); }
 function storage() { return createStorage(dataFile()); }
@@ -116,8 +121,10 @@ function registerHandlers() {
       detail: 'Export a backup of your current workspace first if you want to keep it.'
     });
     if (yes.response !== 1) return { canceled: true };
-    await saving;
-    const restored = await writeData(input);
+    const operation = saving.then(() => writeData(input));
+    saving = operation.catch(() => {});
+    const restored = await operation;
+    notifiedTasks.clear();
     return { canceled: false, data: restored };
   });
   safeHandle('data:openFolder', () => shell.openPath(app.getPath('userData')));
@@ -154,6 +161,12 @@ function registerHandlers() {
     return { root: selectedRoot, relative: path.relative(selectedRoot, folder), truncated: entries.length > 1500,
       entries: results.filter(Boolean).sort((a, b) => Number(b.directory) - Number(a.directory) || a.name.localeCompare(b.name)) };
   });
+  safeHandle('files:createFolder', async (relative, name) => { if (!selectedRoot) throw new Error('Choose a folder first.'); return createFileOps(selectedRoot).createFolder(relative, name); });
+  safeHandle('files:rename', async (relative, name) => { if (!selectedRoot) throw new Error('Choose a folder first.'); return createFileOps(selectedRoot).rename(relative, name); });
+  safeHandle('files:scan', async options => {
+    if (!selectedRoot) throw new Error('Choose a folder first.');
+    return createFileOps(selectedRoot).scan(options);
+  });
   safeHandle('files:open', async relative => {
     const file = await authorizedPath(relative);
     const result = await shell.openPath(file);
@@ -176,9 +189,11 @@ function registerHandlers() {
       usage = totalDelta > 0 ? Math.max(0, Math.min(100, Math.round(100 * (1 - idleDelta / totalDelta)))) : null;
     }
     cpuPrevious = current;
+    let disk = null;
+    try { const fsInfo = await fs.statfs(os.homedir()); disk = { total: fsInfo.blocks * fsInfo.bsize, free: fsInfo.bavail * fsInfo.bsize, location: path.parse(os.homedir()).root }; } catch {}
     return { cpuName: os.cpus()[0]?.model?.trim() || 'Unknown CPU', cores: os.cpus().length,
       cpu: usage, memoryTotal: os.totalmem(), memoryUsed: os.totalmem() - os.freemem(),
-      uptime: os.uptime(), platform: `${os.type()} ${os.release()}`, hostname: os.hostname() };
+      uptime: os.uptime(), platform: `${os.type()} ${os.release()}`, hostname: os.hostname(), disk };
   });
   safeHandle('app:checkUpdate', async () => {
     const info = await githubLatestRelease();
@@ -216,9 +231,40 @@ function githubLatestRelease() {
     request.on('error', reject);
   });
 }
+async function checkReminders() {
+  if (reminderBusy) return;
+  reminderBusy = true;
+  try {
+    const seenFile = path.join(app.getPath('userData'), 'reminders-seen.json');
+    if (!remindersLoaded) {
+      try { const ids = JSON.parse(await fs.readFile(seenFile, 'utf8')); if (Array.isArray(ids)) ids.slice(-4000).forEach(value => { if (typeof value === 'string') notifiedTasks.add(value); }); }
+      catch { /* First launch, or damaged optional notification history; user workspace remains untouched. */ }
+      remindersLoaded = true;
+    }
+    const loaded = await readData();
+    const reminders = dueReminders(loaded, new Date(), notifiedTasks);
+    for (const task of reminders) {
+      if (Notification.isSupported()) {
+        notifiedTasks.add(`${task.id}|${task.due}|${task.dueTime || '09:00'}`);
+        const notification = new Notification({ title: 'LokiVerse · Task reminder', body: task.title.slice(0, 160) });
+        notification.on('click', () => { if(mainWindow && !mainWindow.isDestroyed()) { mainWindow.show(); mainWindow.focus(); } });
+        notification.show();
+      }
+    }
+    if(reminders.length) {
+      await fs.mkdir(path.dirname(seenFile), { recursive: true });
+      const temp = `${seenFile}.${process.pid}.tmp`;
+      await fs.writeFile(temp, JSON.stringify([...notifiedTasks].slice(-4000)), 'utf8');
+      await fs.rename(temp, seenFile);
+    }
+  } catch (error) { console.warn('Reminders unavailable:', error.message); }
+  finally { reminderBusy = false; }
+}
 app.whenReady().then(() => {
   registerHandlers();
   createWindow();
+  setTimeout(checkReminders, 3500);
+  setInterval(checkReminders, 60000).unref();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }).catch(error => { dialog.showErrorBox('LokiVerse launch error', error.message); app.quit(); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

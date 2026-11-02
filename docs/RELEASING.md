@@ -1,45 +1,51 @@
-# LokiVerse — Windows Release / Upgrade Checklist
+# LokiVerse v0.2.0 — GitHub Actions & In-place Upgrade Guide
 
-## Important architectural decision
+The existing GitHub repository is `LokiJ07/LokiVerse` and v0.1.1 is installed on Windows. Do not create a new repository or run `git init` again.
 
-LokiVerse uses **electron-builder NSIS installers** with a stable `appId` and per-user install mode. This permits installing a newer Windows setup over a compatible prior installation **without asking users to manually uninstall**. The release workflow does not require a custom signing secret or Android keystore.
+## Before pushing
 
-This is not an automatic background updater. In v0.1.1, the app checks the newest public GitHub Release and opens the official download page for you.
+1. Open your installed **v0.1.1** → Settings → **Export**; keep the JSON backup outside the application data directory.
+2. Extract `LokiVerse-v0.2.0-Source.zip` and copy its **contents** into the current local Git repository. Replace app sources, `package.json`, and `.github/workflows/` files.
+3. Preserve the `.git` directory and verify `git status` lists the expected source changes.
 
-## First release (`v0.1.0`)
+## Push to existing repository
 
-- [ ] Create the exact repository `LokiJ07/LokiVerse` (public).
-- [ ] Push `main` with the source, workflows, and assets.
-- [ ] Confirm `npm run check` passes locally.
-- [ ] Confirm Windows CI builds and uploads a `.exe` artifact.
-- [ ] Push tag `v0.1.0` (must exactly match `package.json` version).
-- [ ] Confirm GitHub Release contains `LokiVerse-0.1.0-Setup-x64.exe` and `SHA256SUMS.txt`.
-- [ ] On Windows 11, install and open LokiVerse.
-- [ ] Create a note and task; close/reopen the app; verify they remain.
-- [ ] Export backup and restore a test backup.
+```bash
+git add -A
+git commit -m "feat: LokiVerse v0.2.0 productivity expansion"
+git push origin main
+```
 
-## First upgrade test (`v0.1.0` → `v0.1.1`)
+Confirm **GitHub Actions → LokiVerse Windows CI** has succeeded. CI executes `npm run check`, builds the installer and uploads a temporary `.exe` artifact.
 
-**Before testing:** export a JSON backup in v0.1.0 and store it outside the LokiVerse data folder.
+## Publish release
 
-- [ ] Increase `package.json` `version` to `0.1.1`.
-- [ ] **Do not change** `build.appId`, `productName`, NSIS install scope, or storage path.
-- [ ] Push the code, then push tag `v0.1.1`.
-- [ ] In v0.1.0 open **Settings → Check Updates**; it should find v0.1.1.
-- [ ] Close v0.1.0 and run the new GitHub Release setup (do **not** uninstall first).
-- [ ] Verify the Windows app is now v0.1.1 with one normal installed-app entry.
-- [ ] Verify previous tasks and notes survived unchanged.
-- [ ] Verify Windows Start Menu and desktop shortcuts open the new version.
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
 
-## Windows SmartScreen & trust
+Confirm **GitHub Actions → LokiVerse GitHub Release** is green and published `LokiVerse-0.2.0-Setup-x64.exe` plus `SHA256SUMS.txt` under **Releases → v0.2.0**. The workflow uses the built-in `GITHUB_TOKEN`, **not a custom signing secret**.
 
-Unsigned app builds may show an unknown publisher warning. The workflow does **not** sign Windows binaries; a certificate is an optional future enhancement and is not needed to build or install. Download only from your official Release, and compare SHA256 with the included `SHA256SUMS.txt`. **Never publish Android keystores, Windows certificates, tokens, or secrets.**
+## Upgrade test on Windows
 
-## Known boundaries / future work
+1. Close running LokiVerse v0.1.1.
+2. Download the installer from the official `LokiJ07/LokiVerse` GitHub Release. Verify source and checksum.
+3. Run the **v0.2.0** installer **without uninstalling v0.1.1**.
+4. Check that LokiVerse opens as v0.2.0, Windows Apps has only one LokiVerse entry, and existing tasks, notes and settings remain.
+5. Create a note and task in v0.2.0, restart the app and verify they persist. See `docs/QA.md`.
 
-- CI builds require network access to npm and Electron distribution servers.
-- GitHub Releases must be public for unauthenticated in-app checks; private repositories will not be supported by this checker.
-- Browser-based Electron security settings do not make untrusted user files safe; LokiFiles delegates file opening to Windows only on explicit click.
-- CPU statistics are estimates based on `os.cpus()` time deltas; no CPU/GPU temperature telemetry is implemented.
-- Seamless zero-click differential updates are not implemented; manual in-place installer updates are deliberately preferred while no signing secret exists.
-- The installer build and upgrade path have not been physically executed on Windows in this generation environment; verify using the two-version smoke test above.
+## Do not change these between versions
+
+- `package.json`: `build.appId = com.lokij.lokiverse`
+- `package.json`: `productName = LokiVerse`
+- NSIS per-user installer mode (`oneClick: true`, `perMachine: false`)
+- `app.getPath('userData')` workspace location or the `lokiverse-data.json` filename
+
+Changing identity can cause duplicate installations or lost access to expected data. As long as these settings remain stable, NSIS upgrade is designed for in-place installation; still test every release on Windows.
+
+## Notes / boundaries
+
+- Unsigned installers may trigger Windows SmartScreen. The CI build is **not code signed**.
+- The release checker opens the GitHub Release page; it does not install updates itself.
+- This environment can run Node tests and UI mock smoke tests but **cannot validate the compiled Windows `.exe` or actual in-place upgrade**. That final verification needs GitHub Actions and a Windows PC.

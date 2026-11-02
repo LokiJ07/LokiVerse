@@ -5,7 +5,7 @@ const { normalizeData, compareVersions, isWithinFolder } = require('../src/share
 
 test('data is clean and has predictable fields', () => {
   const empty = normalizeData(null);
-  assert.deepEqual(empty, { tasks: [], notes: [], settings: { displayName: 'Creator', accent: 'purple' } });
+  assert.deepEqual(empty, { tasks: [], notes: [], settings: { displayName: 'Creator', accent: 'purple', reminders: true, compactMode: false } });
   const result = normalizeData({
     tasks: [{ id: 'a', title: 'My task', priority: 'Invalid', completed: 1 }],
     notes: [{ id: 'b', title: 'Idea', body: 'Hello' }], settings: { displayName: 'Loki' }
@@ -15,6 +15,9 @@ test('data is clean and has predictable fields', () => {
   assert.equal(result.notes[0].body, 'Hello');
   assert.equal(result.settings.displayName, 'Loki');
   assert.equal(result.settings.accent, 'purple');
+  assert.equal(result.tasks[0].category,'General');
+  assert.equal(result.notes[0].folder,'General');
+  assert.equal(result.notes[0].pinned,false);
   assert.equal(normalizeData({ settings: { accent: 'cyan' } }).settings.accent, 'cyan');
   assert.equal(normalizeData({ settings: { accent: '<script>' } }).settings.accent, 'purple');
 });
