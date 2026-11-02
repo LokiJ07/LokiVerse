@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.5.0 — Professional Ecosystem Update
+
+- Desktop: persistent capped local transfer history, totals by direction, filterable Transfer Center, Cancel Transfer and Clear Finished controls. `lokishare-transfer-history.json` is stored separately from the workspace backup and never includes full paths, cookies, passwords, join secrets, or certificate keys.
+- Desktop transfer protocol: cancel active uploads/downloads, retain transfer statuses when sharing stops, remove unfinished `.part` uploads, preserve original files and no-overwrite behavior.
+- Android: cancellable HTTPS upload/download progress, sequential 20-file batch uploads, percent indicator, private recent-activity list and Clear Activity button.
+- Kept v0.4.x HTTPS certificate pinning, pairing and Android SDK/Kotlin CI fixes, app identities and local task/note storage unchanged.
+- Added Node tests for persisted transfer history and clean in-progress cancellation.
+- **Not verified on a physical device yet:** GitHub Actions native builds, Android camera/scanner stability, and real device transfer cancellation.
+
+
 ## v0.4.2 — Android Kotlin Gradle dependency fix
 
 - Aligned Kotlin runtime artifacts using `org.jetbrains.kotlin:kotlin-bom:1.8.22` to resolve `checkDebugDuplicateClasses` errors caused by older transitive JDK7/JDK8 stdlib modules.

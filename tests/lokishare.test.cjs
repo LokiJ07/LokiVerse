@@ -97,3 +97,67 @@ test('pairing rejection never gives session credentials',async t=>{
  const response=await secureFetch(url+`/api/pair/status?id=${p.id}&key=${p.key}`);
  assert.equal((await response.json()).status,'rejected');assert.equal(response.headers.get('set-cookie'),null);
 });
+
+test('v0.5 transfer history survives session restarts and can be cleared without deleting files',async t=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'lokiverse-history-'));
+ const historyFile=path.join(tmp,'history.json');const inbox=path.join(tmp,'received');await fs.mkdir(inbox);
+ let share=createLokiShare({identityDir:path.join(tmp,'cert'),historyFile});
+ t.after(async()=>{await share.stop();await fs.rm(tmp,{recursive:true,force:true});});
+ await share.start('127.0.0.1');
+ const cert=JSON.parse(await fs.readFile(path.join(tmp,'cert','lokishare-tls-identity.json'),'utf8')).cert;
+ trustedTestCert=cert;
+ const url=share.status().url,headers={Origin:url,'Content-Type':'application/json'};
+ const pair=await secureFetch(url+'/api/pair/request',{method:'POST',headers,body:JSON.stringify({join:share.status().code,device:'Test'})});
+ const {id,key}=await pair.json();share.approve(id,true);
+ const accepted=await secureFetch(url+`/api/pair/status?id=${id}&key=${key}`);const cookie=accepted.headers.get('set-cookie').split(';')[0];
+ await share.setInbox(inbox);
+ const response=await secureFetch(url+'/api/upload?name=memory.txt',{method:'POST',headers:{Origin:url,Cookie:cookie},body:Buffer.from('KEEP THIS')});
+ assert.equal(response.status,200);
+ assert.equal(share.status().totals.completed,1);
+ assert.equal(share.status().totals.receivedBytes,9);
+ await share.stop();assert.equal(share.status().transfers.length,1,'stop does not remove history');
+ await new Promise(resolve=>setTimeout(resolve,30));
+ share=createLokiShare({identityDir:path.join(tmp,'cert'),historyFile});
+ await share.start('127.0.0.1');
+ assert.equal(share.status().transfers[0].status,'completed');
+ assert.equal(share.status().totals.receivedBytes,9);
+ await share.clearHistory();assert.equal(share.status().transfers.length,0);
+ assert.equal(await fs.readFile(path.join(inbox,'memory.txt'),'utf8'),'KEEP THIS');
+ await share.stop();
+ share=createLokiShare({identityDir:path.join(tmp,'cert'),historyFile});await share.start('127.0.0.1');
+ assert.equal(share.status().transfers.length,0);
+});
+
+test('desktop cancel aborts an in-flight upload and cleans its temporary file',async t=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'lokiverse-cancel-'));
+ const share=createLokiShare({identityDir:path.join(tmp,'cert'),historyFile:path.join(tmp,'history.json')});
+ t.after(async()=>{await share.stop();await fs.rm(tmp,{recursive:true,force:true});});
+ const inbox=path.join(tmp,'incoming');await fs.mkdir(inbox);
+ await share.start('127.0.0.1');await share.setInbox(inbox);
+ const url=share.status().url;
+ const cert=JSON.parse(await fs.readFile(path.join(tmp,'cert','lokishare-tls-identity.json'),'utf8')).cert;
+ trustedTestCert=cert;
+ const pair=await secureFetch(url+'/api/pair/request',{method:'POST',headers:{Origin:url,'Content-Type':'application/json'},body:JSON.stringify({join:share.status().code,device:'Slow sender'})});
+ const {id,key}=await pair.json();share.approve(id,true);
+ const accepted=await secureFetch(url+`/api/pair/status?id=${id}&key=${key}`);const cookie=accepted.headers.get('set-cookie').split(';')[0];
+ const request=https.request(url+'/api/upload?name=incomplete.dat',{method:'POST',ca:cert,headers:{Origin:url,Cookie:cookie,'Content-Length':String(1024*1024*10)}});
+ request.on('error',()=>{});request.on('response',res=>res.resume());
+ request.write(Buffer.alloc(128*1024,65));
+ let active=null;
+ for(let i=0;i<120;i++){
+   active=share.status().transfers.find(x=>x.status==='transferring');
+   if(active)break;
+   await new Promise(resolve=>setTimeout(resolve,20));
+ }
+ assert.ok(active,'upload should be active');
+ share.cancelTransfer(active.id);
+ request.destroy();
+ for(let i=0;i<120;i++){
+   const files=await fs.readdir(inbox);
+   if(files.length===0 && share.status().transfers[0].status==='cancelled')break;
+   await new Promise(resolve=>setTimeout(resolve,20));
+ }
+ assert.equal(share.status().transfers[0].status,'cancelled');
+ assert.deepEqual(await fs.readdir(inbox),[],'cancelled upload must not leave a partial file');
+ await share.stop();
+});

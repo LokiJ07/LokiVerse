@@ -27,6 +27,8 @@ contextBridge.exposeInMainWorld('loki', Object.freeze({
   shareDisableInbox: () => invoke('share:disableInbox'),
   shareAddFiles: () => invoke('share:addFiles'),
   shareRemoveFile: id => invoke('share:removeFile', id),
+  shareCancelTransfer: id => invoke('share:cancelTransfer', id),
+  shareClearHistory: () => invoke('share:clearHistory'),
   shareQRCode: () => invoke('share:qr'),
   onShareChanged: callback => { ipcRenderer.on('share:changed', callback); },
   checkUpdate: () => invoke('app:checkUpdate'), openReleases: () => invoke('app:openReleases')

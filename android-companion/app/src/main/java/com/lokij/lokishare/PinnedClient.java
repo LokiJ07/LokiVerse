@@ -120,7 +120,7 @@ final class PinnedClient {
     }
     JSONObject status()throws Exception{return get("/api/status");}
     JSONArray files()throws Exception{return get("/api/manifest").getJSONArray("files");}
-    JSONObject upload(Context context, Uri uri, TransferProgress progress) throws Exception {
+    JSONObject upload(Context context, Uri uri, TransferProgress progress, TransferCancellation cancellation) throws Exception {
         String name="file";long size=-1;
         try(Cursor c=context.getContentResolver().query(uri,null,null,null,null)) {
             if(c!=null && c.moveToFirst()){
@@ -130,28 +130,29 @@ final class PinnedClient {
         }
         if(size<0||size>MAX_FILE)throw new Exception("File size unavailable or over 512 MiB.");
         String route="/api/upload?name="+URLEncoder.encode(name,"UTF-8");
-        HttpsURLConnection c=open(route,"POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/octet-stream");c.setFixedLengthStreamingMode(size);
+        HttpsURLConnection c=open(route,"POST");cancellation.attach(c);c.setDoOutput(true);c.setRequestProperty("Content-Type","application/octet-stream");c.setFixedLengthStreamingMode(size);
         try(InputStream input=context.getContentResolver().openInputStream(uri)) {
             if(input==null)throw new Exception("Could not read selected file.");
             try(OutputStream output=c.getOutputStream()){
                 byte[] buf=new byte[64*1024];int n;long sent=0;
-                while((n=input.read(buf))!=-1){sent+=n;if(sent>size)throw new Exception("File changed during transfer.");output.write(buf,0,n);progress.onProgress(sent,size);}
+                while((n=input.read(buf))!=-1){cancellation.check();sent+=n;if(sent>size)throw new Exception("File changed during transfer.");output.write(buf,0,n);progress.onProgress(sent,size);}
                 if(sent!=size)throw new Exception("File length changed during transfer.");
             }
-            return new JSONObject(read(c));
-        }finally{c.disconnect();}
+            cancellation.check();return new JSONObject(read(c));
+        }finally{cancellation.detach(c);c.disconnect();}
     }
-    void download(Context context,String id, Uri destination, TransferProgress progress) throws Exception {
+    void download(Context context,String id, Uri destination, TransferProgress progress, TransferCancellation cancellation) throws Exception {
         HttpsURLConnection c=open("/api/download?id="+URLEncoder.encode(id,"UTF-8"),"GET");
+        cancellation.attach(c);
         try {
             if(c.getResponseCode()!=200){read(c);throw new Exception("Download rejected.");}
             long length=c.getContentLengthLong();long done=0;
             try(InputStream input=c.getInputStream();OutputStream output=context.getContentResolver().openOutputStream(destination,"w")){
                 if(output==null)throw new Exception("Could not write destination.");
                 byte[] buf=new byte[64*1024];int n;
-                while((n=input.read(buf))!=-1){output.write(buf,0,n);done+=n;progress.onProgress(done,length);}
+                while((n=input.read(buf))!=-1){cancellation.check();output.write(buf,0,n);done+=n;progress.onProgress(done,length);}
             }
-        }finally{c.disconnect();}
+        }finally{cancellation.detach(c);c.disconnect();}
     }
     interface TransferProgress {void onProgress(long bytes,long total);}
 }

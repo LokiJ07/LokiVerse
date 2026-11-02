@@ -1,123 +1,84 @@
-# 💜 LokiVerse v0.4.2 — Kotlin dependency alignment hotfix
+# LokiVerse v0.5.0 · Professional Ecosystem Update
 
-**LokiVerse** is an offline-first Windows desktop productivity hub (Tasks, Notes, Files, SystemPulse) with local Wi-Fi transfer functionality. v0.4.0 adds encrypted transport and the source for a native Android LokiShare companion. MIT license.
+![LokiVerse](assets/icon.png)
 
-## Android Kotlin duplicate-class CI hotfix (v0.4.2)
+LokiVerse is an **offline-first Windows desktop hub** for tasks, notes, scoped file management, local PC monitoring, and **secure LokiShare**. Its optional native Android companion transfers files to and from the Windows host on trusted private Wi-Fi. The code is MIT licensed.
 
-- Fixes the **Gradle `:app:checkDebugDuplicateClasses`** failure when `kotlin-stdlib:1.8.22` appears together with legacy `kotlin-stdlib-jdk7/jdk8:1.6.21`.
-- Adds `implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')` to `android-companion/app/build.gradle`. The BOM aligns transitive Kotlin runtime variants **without removing ZXing or AndroidX libraries**.
-- Adds a Gradle verification task, `:app:verifyKotlinRuntimeAlignment`, and runs it in **both** Android CI and release jobs before APK packaging.
-- Keeps the Android SDK `setup-android@v4` fix and the v0.4.1 QR scanner stability changes.
-- Ensures Android TEST release APK filename follows the pushed tag version rather than being hard-coded.
-- Version bump: **Windows 0.4.2**, **Android versionCode 6 / versionName 0.4.2**. `com.lokij.lokiverse` and `com.lokij.lokishare` identities are unchanged.
-- **Not confirmed on GitHub runners yet:** the CI build is the acceptance test. An APK that builds is **not** proof that scanning is crash-free on your phone; test the physical device after installing.
+## What's new in 0.5.0
 
-## Android QR scanner hotfix (v0.4.1)
+- **Transfer Center on Windows:** persistent history (latest 100 transfers), timestamps, device labels, sent/received totals, progress bars and status filters. Finished history can be cleared without deleting any transferred files. In-progress transfers may be cancelled from the desktop app.
+- **Safer interruptions:** interrupted/cancelled incoming PC uploads are cleaned from the selected inbox; successfully transferred files and source files are not deleted. Transfers still have a 512 MiB-per-file limit, explicit PC pairing approval and no-overwrite behavior.
+- **Android experience:** progress bar with percentage, Cancel button, sequential processing for a selected batch of up to 20 files and phone-local recent activity. A cancelled phone download may leave a partial file at the user-chosen Save As destination; remove it manually if necessary.
+- **Privacy:** the Windows transfer history is in `lokishare-transfer-history.json` under LokiVerse's user-data directory, **not** in the workspace JSON backup. It stores file names, device display labels, direction, sizes, status and timestamps, **not** paths, pairing secrets, cookies, certificate keys or file contents. Phone history is in private app preferences. History can be cleared in each app.
+- **Unchanged:** all other LokiVerse modules, HTTPS certificate pinning, QR approval, Android package ID `com.lokij.lokishare`, Windows `com.lokij.lokiverse`/NSIS upgrade identity, and the existing Tasks/Notes workspace format.
 
-- QR scanner uses ZXing `ScanContract` + AndroidX Activity Result API instead of deprecated `IntentIntegrator`.
-- Requests CAMERA permission explicitly and handles denial with an on-screen message.
-- Checks for camera hardware and catches scanner launch failures instead of crashing the main screen.
-- Disables camera activity orientation locking for better compatibility with Android versions/devices.
-- Validates QR input size/type before sending it to the original strict, pinned-HTTPS invitation parser.
-- Keeps manual invitation pasting available if a phone scanner remains unsupported.
-- Android unit tests verify rejected unsafe/invalid scanned inputs; CI runs Android tests before assembling the TEST APK.
-- **Actual root cause of the reported force-stop is not known until Android Logcat is captured.** This hotfix targets likely scanner launch and permission weaknesses, but does not guarantee every camera driver will work.
-- Android TEST APKs remain debug-signed per GitHub runner, so uninstalling the previous Android test APK may be necessary; Windows app updates retain the same NSIS identity.
+## Requirements
 
-## What's new
+- Windows 10/11 x64 for the desktop installer; Android 8+ for the Android companion.
+- Android and PC on the **same private LAN/Wi-Fi network**, Windows Firewall allowing the app on private networks, both devices able to reach each other.
+- Internet access **not needed for local transfers** (but GitHub Actions builds and dependency installation require it).
 
-- Windows LokiShare now serves **HTTPS**, not cleartext HTTP.
-- A fresh self-signed TLS identity is generated locally on the PC at first start and retained across Windows upgrades. **The private key never goes to GitHub or the phone.**
-- The desktop QR contains a `lokiverse://pair` invitation with the local HTTPS URL, random join secret and certificate SHA-256 fingerprint.
-- Native Java Android companion: scan the PC QR, verify the pinned TLS certificate, request pairing, compare the same six-digit code on both screens, and transfer files in both directions through Android's document pickers.
-- Transfers still require explicit Windows approval and file/folder selection, are limited to **512 MiB per file**, and never automatically overwrite a local PC file.
-- Prior tasks, notes, settings, `com.lokij.lokiverse` application ID and NSIS upgrade identity remain intact.
-- GitHub Actions builds **Windows installer + Android TEST debug APK**. No custom signing secret is needed **for these test builds**, but the Android test APK is **not suitable as a stable public-update channel**.
+## Pair and transfer
 
-## Important Android signing distinction
+1. Export a Workspace backup in your currently installed LokiVerse. Close it, then run the new Windows installer **over the existing one**; do not manually uninstall.
+2. Open **LokiShare** and choose the private network interface. Click **Start sharing**. Choose a receive folder if you want Android → Windows uploads.
+3. Open the LokiShare Android TEST companion, tap **Scan pairing QR**, or paste an invitation. The app pins the HTTPS certificate fingerprint included in the PC QR.
+4. Tap **Request secure pairing** and verify that the six-digit number shown on the phone matches the number in the Windows approval request. Approve only if it matches.
+5. To upload: choose files on Android (up to 20 per batch); progress appears in the phone and PC. To download: use **Add files to share** on the PC, then tap **Refresh shared files** on Android and choose where to save.
+6. You can cancel an active transfer from Windows or the Android companion. To disconnect a device, choose **Disconnect** on Windows or **Stop sharing** to end the session.
 
-**Windows:** Same NSIS identity means the v0.4.0 installer can update v0.3.0 without manually uninstalling it; signing secrets are not required to build an *unsigned* Windows installer (Windows SmartScreen may show a warning).
+### Security boundaries & limitations
 
-**Android:** Each GitHub Actions runner generates its own **debug signing certificate**; a future runner's APK cannot necessarily update the previously installed one. **Do not publish the debug APK as a stable release** or promise in-place Android updates. True no-uninstall upgrades require a permanently backed-up private Android release-signing keystore, used securely for every subsequent release (generally stored as GitHub encrypted secrets or a protected signing service). **Never commit a signing keystore or password to a public repository.** The test APK's app ID is `com.lokij.lokishare` and is separate from Windows LokiVerse.
+- Connections use **pinned HTTPS** to the PC's locally generated certificate, not public cloud services. Session credentials never appear in transfer history.
+- Sharing is explicitly started by the PC user. The phone can access only selected shared files and the selected receive directory; uploads cannot overwrite pre-existing files. The Windows UI never automatically deletes source files.
+- This is **not** remote access and has no relay or auto-discovery service. QR approval is intentional. Do not use on public or untrusted Wi-Fi.
+- The Android APK produced by Actions is a **debug-signed TEST build**. A different runner may use a different debug key; Android in-place updates are **not guaranteed**. Windows NSIS in-place upgrades continue to use the unchanged app identity. This release does **not** add any new signing workflow.
+- Windows SmartScreen may still display **Unknown publisher** because the Windows NSIS installer is unsigned. Disabling Defender/SmartScreen is not part of this project.
+- The phone's existing QR camera force-stop issue, if any, requires a physical-device test and Android Logcat; local backend tests cannot prove camera stability.
 
-## 📲 Pairing instructions (Windows + Android)
+## Build and test
 
-1. Update your Windows LokiVerse to v0.4.2 using the `LokiVerse-0.4.2-Setup-x64.exe` installer. Back up your notes/tasks first.
-2. On your Android 8.0+ device, install the **v0.4.2 Android TEST APK** from the GitHub release or the Android CI artifact. Use only APKs built from your own repository. Android may require enabling installation from your browser/files app.
-3. Connect both devices to the same **trusted private Wi-Fi**. Open Windows **LokiShare**, choose the Wi-Fi interface and click **Start sharing**. Use **Choose receive folder** to enable incoming files.
-4. Open **LokiShare** on Android and tap **Scan pairing QR**. Scan the purple QR displayed in the Windows app. The Android app validates the invitation format and pins the TLS certificate fingerprint encoded in the QR. **Use the Android companion scanner, not your standard browser QR scanner.**
-5. Tap **Request secure pairing** on Android. Compare the six-digit number with the one on the Windows pairing request. Click **Approve** on Windows **only if they match**.
-6. To send phone → PC, tap **Select files to send** in the app and pick files. They save only to your selected receive folder (existing files are not overwritten).
-7. To send PC → phone, click **Add files to share** on Windows, then tap **Refresh shared files** on Android and choose a destination using the Android Save As dialog.
-8. Use **Disconnect** or **Stop sharing** on Windows to revoke access.
+**Desktop** (from repository root):
 
-**Prior Chrome compatibility:** The previous browser companion is still served at the local `https://...` URL, but standard phone browsers do **not** trust a locally generated self-signed certificate automatically. Prefer the native Android companion. Do not bypass certificate warnings for unfamiliar devices or networks.
-
-No internet connection is needed for *local transfers*. Initial APK installation/dependency downloads can require internet. No public Wi-Fi, cross-network relay, cloud sync, automatic discovery or end-to-end cryptography independent of the PC is claimed: transfers are encrypted **between the Android client and Windows host** using HTTPS with certificate pinning.
-
-## Android SDK CI hotfix (November 2, 2026)
-
-The Android workflow previously called `android-actions/setup-android@v3`, whose default SDK package list could request the removed legacy `tools` package. This caused `Failed to find package 'tools'` / exit 1 **before Gradle compiled the app**. The two workflows now call `android-actions/setup-android@v4` with `packages: 'platform-tools'`, then explicitly install `platforms;android-35` and `build-tools;35.0.0` using `sdkmanager --install`. The workflow also checks that the SDK platform jar and build-tools directory exist before running Gradle.
-
-The Android SDK setup fix and v0.4.1 QR scanner stability changes are retained. v0.4.2 aligns Kotlin runtime versions. **This version has not been verified on GitHub's runners yet**; push to `main` and inspect the Android CI job before tagging. If `v0.4.0` was already tagged, do not move that tag: create a new patch version/tag instead.
-
-## Developer commands
-
-From the **Windows project root**:
-
-```bash
+```sh
 npm install
 npm run check
 npm run start
+npm run dist:win
 ```
 
-From `android-companion` (Android Studio can open this folder directly; Gradle must be installed if running via CLI):
+**Android** (`android-companion/`): open the directory in Android Studio, or use JDK 17 + Android SDK 35 + Gradle 8.11.1:
 
-```bash
-gradle --no-daemon :app:assembleDebug
+```sh
+gradle --no-daemon :app:verifyKotlinRuntimeAlignment :app:testDebugUnitTest :app:assembleDebug
 ```
 
-Android build tooling: JDK 17, Android Gradle Plugin 8.9.2, Gradle 8.11.1, SDK 35, ZXing Android Embedded 4.3.0. GitHub Actions installs the build tools automatically.
+GitHub Actions automatically builds **Windows NSIS `.exe`** and **Android TEST `.apk`**. Both CI jobs should pass before publishing.
 
-## Publish through the existing repository
+## Release v0.5.0
 
-Copy the ZIP's contents into your current `LokiVerse` Git checkout, **including `.github` and `android-companion`**, and do not delete `.git`. Then:
+Copy all extracted source files (including `.github` and `android-companion`) into the existing LokiVerse git checkout, retaining `.git`.
 
-```bash
+```sh
 git add -A
-git commit -m "fix: align Android Kotlin runtime dependencies in v0.4.2"
+git commit -m "feat: LokiVerse v0.5.0 transfer center and Android progress"
 git push origin main
 ```
 
-Wait for **both** `verify-and-build` (Windows) and `android-companion` (Android) CI jobs to pass. **Do not tag if either fails.** Then:
+Once both GitHub Actions CI jobs are green:
 
-```bash
-git tag v0.4.2
-git push origin v0.4.2
+```sh
+git tag v0.5.0
+git push origin v0.5.0
 ```
 
-The release workflow is configured to publish `LokiVerse-0.4.2-Setup-x64.exe`, `SHA256SUMS.txt` and (when its separate Android job succeeds) `LokiShare-0.4.2-Android-TEST.apk` + its checksum. An **Android APK build has not been executed in this generation environment**: GitHub Actions will perform the first real Android compilation. The HTTPS backend tests passed locally, but physical device testing must still be done.
+Do **not** move or overwrite an existing tag. GitHub Releases should publish:
 
-## Architecture
+- `LokiVerse-0.5.0-Setup-x64.exe`
+- `LokiShare-0.5.0-Android-TEST.apk`
 
-| Module | Technology |
-|---|---|
-| Desktop | Electron, Node.js, plain JavaScript/CSS |
-| Local storage | Per-user JSON with recovery/backup protection |
-| File sharing server | Node.js HTTPS, locally generated X.509 RSA certificate |
-| Secure invitation | QR-based HTTPS URL + random one-time join secret + SHA-256 certificate fingerprint |
-| Android | Java 17, Android SDK, ZXing offline QR scanner, `HttpsURLConnection` pinning, Storage Access Framework |
-| CI/CD | GitHub Actions, electron-builder NSIS, Android Gradle Plugin |
+Both release workflows remain configured to publish checksums. Check them and test on real Windows/Android devices.
 
-**Security notes:** See [`docs/LOKISHARE.md`](docs/LOKISHARE.md). Certificate private key is stored under Windows app userData `share-security/`, **not** in the GitHub source. The QR invitation is a temporary secret; do not post a screenshot of your live pairing QR publicly. Because v0.3.0 used HTTP, it cannot connect securely to a v0.4.0 server; update Windows first and use the new Android companion.
+## Development status
 
-## If Scan QR still force-stops the app
-
-The exact root cause cannot be established from a successful CI build or from the symptom alone. If it persists, collect the device exception:
-
-1. On a PC with Google's Android Platform Tools installed and USB debugging enabled on your phone, connect the phone over USB.
-2. Run `adb logcat -c` to clear the previous log buffer, tap **Scan pairing QR** and reproduce the crash.
-3. Run `adb logcat -d -v time > lokishare-crash.txt` and search for `FATAL EXCEPTION`, `AndroidRuntime`, or `com.lokij.lokishare`.
-4. Share only the relevant crash stack trace after removing personal details, file paths and pairing QR codes/secrets.
-
-This is more reliable than guessing whether camera permissions or the camera driver caused the force-stop. Do not publish full device log files publicly.
+Node security/protocol tests can be run locally. The packaged Windows Electron installer and native Android APK must still be verified by GitHub Actions, with actual pairing, cancellation, QR scanning and upgrade tests carried out on devices. See [`docs/QA.md`](docs/QA.md) for a checklist.

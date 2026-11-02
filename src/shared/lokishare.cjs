@@ -50,17 +50,66 @@ function newDownloadName(name) {
   const ascii=name.replace(/[^a-zA-Z0-9._-]/g,'_').replace(/^\.+/,'file');
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
-function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLIC_DIR, identityDir=path.join(os.tmpdir(),'lokishare-test-'+process.pid)}={}) {
+function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLIC_DIR, identityDir=path.join(os.tmpdir(),'lokishare-test-'+process.pid), historyFile=null}={}) {
   let server=null, bindAddress=null, hostURL=null, pairCode=null, joinSecret=null, inbox=null, tlsFingerprint=null;
   const pending=new Map(), clients=new Map(), downloads=new Map(), transfers=[];
+  const activeTransfers=new Map();
+  let historyLoaded=false, historyError=null, historyQueue=Promise.resolve();
   const failures=new Map();
   const sockets=new Set();
   let sequence=0;
   let stateVersion=0;
   function changed() { stateVersion++; onChange(); }
+  // Separate from the workspace backup: never persist paths, pairing codes, IPs or cookies.
+  async function readHistory() {
+    if(historyLoaded || !historyFile) return;
+    try {
+      const data=JSON.parse(await fs.readFile(historyFile,'utf8'));
+      if(!data || data.version!==1 || !Array.isArray(data.items)) throw Error('Unsupported history format.');
+      transfers.splice(0,transfers.length,...data.items.slice(0,100).filter(x=>x && typeof x.id==='string' && typeof x.name==='string' && typeof x.timestamp==='string').map(x=>({
+        id:x.id.slice(0,32),timestamp:x.timestamp.slice(0,40),name:x.name.slice(0,180),
+        direction:String(x.direction||'').slice(0,24), device:String(x.device||'').slice(0,36),
+        size:Number.isSafeInteger(x.size)&&x.size>=0?x.size:0,
+        bytes:Number.isSafeInteger(x.bytes)&&x.bytes>=0?x.bytes:0,
+        status:x.status==='transferring'?'interrupted':String(x.status||'interrupted').slice(0,24)
+      })));
+    } catch(error) {
+      if(error.code!=='ENOENT') historyError='History file could not be read. It was left untouched; clear it only after reviewing it.';
+    }
+    historyLoaded=true;changed();
+  }
+  function persistHistory() {
+    if(!historyFile || historyError) return;
+    const snapshot=JSON.stringify({version:1,items:transfers.map(({id,timestamp,name,direction,device,size,bytes,status})=>({id,timestamp,name,direction,device,size,bytes,status}))});
+    historyQueue=historyQueue.catch(()=>{}).then(async()=>{
+      await fs.mkdir(path.dirname(historyFile),{recursive:true});
+      const temp=`${historyFile}.${process.pid}.tmp`;
+      try {await fs.writeFile(temp,snapshot,{encoding:'utf8',mode:0o600});await fs.rename(temp,historyFile);}
+      finally {await fs.rm(temp,{force:true}).catch(()=>{});}
+    }).catch(error=>{historyError=`Transfer history could not be saved: ${error.message}`;changed();});
+  }
+  function finishTransfer(transfer,status) {
+    if(transfer.status==='cancelled' && status!=='cancelled') return;
+    transfer.status=status;activeTransfers.delete(transfer.id);changed();persistHistory();
+  }
+  function cancelTransfer(id) {
+    const action=activeTransfers.get(id);
+    if(!action)return status();
+    const item=transfers.find(t=>t.id===id);
+    if(item && item.status==='transferring') {item.status='cancelled';activeTransfers.delete(id);changed();persistHistory();action();}
+    return status();
+  }
+  async function clearHistory() {
+    if(historyError) throw Error('History file is unreadable. Back it up and remove it manually from the app data directory first.');
+    // Keep transfers still in flight; do not remove an active transfer from the UI.
+    const inFlight=transfers.filter(t=>t.status==='transferring');
+    transfers.splice(0,transfers.length,...inFlight);changed();persistHistory();
+    await historyQueue;return status();
+  }
+
   function addTransfer(input) {
     const item={id:rand(6), timestamp:new Date(clock()).toISOString(),...input};
-    transfers.unshift(item);if(transfers.length>25) transfers.pop();changed();return item;
+    transfers.unshift(item);if(transfers.length>100) transfers.pop();changed();persistHistory();return item;
   }
   function status() {
     prune();
@@ -68,7 +117,12 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
       pending:[...pending.values()].filter(p=>p.status==='pending').map(p=>({id:p.id, device:p.device, match:p.match, created:p.created})),
       clients:[...clients.values()].map(c=>({id:c.id,device:c.device,lastSeen:c.lastSeen})),
       files:[...downloads.values()].map(f=>({id:f.id,name:f.name,size:f.size})),
-      transfers:transfers.map(x=>({...x})), maxFileBytes:MAX_FILE, version:stateVersion };
+      transfers:transfers.map(x=>({...x})),
+      historyError,
+      totals:{completed:transfers.filter(t=>t.status==='completed').length,
+        receivedBytes:transfers.filter(t=>t.status==='completed' && t.direction==='to PC').reduce((sum,t)=>sum+t.size,0),
+        sentBytes:transfers.filter(t=>t.status==='completed' && t.direction==='to phone').reduce((sum,t)=>sum+t.size,0)},
+      maxFileBytes:MAX_FILE, version:stateVersion };
   }
   function prune() {
     for(const [key,p] of pending) if(clock()-p.created>PAIR_TTL) pending.delete(key);
@@ -145,10 +199,11 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
         const transfer=addTransfer({direction:'to phone',device:client.device,name:file.name,size:stat.size,bytes:0,status:'transferring'});
         res.writeHead(200,{...headers,'Content-Type':'application/octet-stream','Content-Length':String(stat.size),'Content-Disposition':newDownloadName(file.name)});
         const stream=fsSync.createReadStream(file.path);let last=0;
+        activeTransfers.set(transfer.id,()=>{stream.destroy();res.destroy();});
         stream.on('data',chunk=>{transfer.bytes+=chunk.length;if(clock()-last>250){last=clock();changed();}});
-        res.on('close',()=>{if(!res.writableFinished && transfer.status==='transferring'){transfer.status='interrupted';changed();stream.destroy();}});
-        try { await pipeline(stream,res);transfer.status='completed';transfer.bytes=stat.size;changed(); }
-        catch {transfer.status='interrupted';changed();}
+        res.on('close',()=>{if(!res.writableFinished && transfer.status==='transferring'){finishTransfer(transfer,'interrupted');stream.destroy();}});
+        try { await pipeline(stream,res);transfer.bytes=stat.size;finishTransfer(transfer,'completed'); }
+        catch {finishTransfer(transfer,'interrupted');}
         return;
       }
       if(req.method==='POST' && u.pathname==='/api/upload') {
@@ -159,25 +214,28 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
         // Reserve a random temporary path; completed files are published without overwriting.
         const tmp=path.join(inbox,`.lokishare-${rand(10)}.part`);
         const transfer=addTransfer({direction:'to PC',device:client.device,name,size:declared,bytes:0,status:'transferring'});
-        let ended=false;
+
         try {
           const stream=fsSync.createWriteStream(tmp,{flags:'wx',mode:0o600});let last=0;
+          activeTransfers.set(transfer.id,()=>{req.destroy();stream.destroy();});
           req.on('data',piece=>{transfer.bytes+=piece.length;if(transfer.bytes>MAX_FILE)req.destroy();if(clock()-last>250){last=clock();changed();}});
           await pipeline(req,stream);
+          if(transfer.status==='cancelled') throw Error('Upload cancelled.');
           if(transfer.bytes!==declared) throw Error('Incomplete upload.');
           const ext=path.extname(name), base=name.slice(0,name.length-ext.length), maxAttempts=100;
-          let savedName;
+          let savedName,savedPath;
           for(let i=0;i<maxAttempts;i++) {
             const candidate=i?`${base} (${i})${ext}`:name;
             if(!validName(candidate)) continue;
-            try { await fs.copyFile(tmp,path.join(inbox,candidate),fsSync.constants.COPYFILE_EXCL);savedName=candidate;break; }
+            try { const candidatePath=path.join(inbox,candidate); await fs.copyFile(tmp,candidatePath,fsSync.constants.COPYFILE_EXCL);savedName=candidate;savedPath=candidatePath;break; }
             catch(e){if(e.code!=='EEXIST')throw e;}
           }
+          if(transfer.status==='cancelled') {if(savedPath) await fs.rm(savedPath,{force:true});throw Error('Upload cancelled.');}
           if(!savedName) throw Error('Unable to find an available filename.');
-          transfer.status='completed';transfer.savedName=savedName;ended=true;changed();
+          transfer.savedName=savedName;finishTransfer(transfer,'completed');
           json(res,200,{ok:true,savedName});
         } catch(e) {
-          transfer.status='failed';transfer.error=e.message;changed();
+          transfer.error=e.message;finishTransfer(transfer,'failed');
           if(!res.headersSent && !res.destroyed) error(res,500,'Upload failed. Please try again.');
         } finally { await fs.rm(tmp,{force:true}).catch(()=>{}); }
         return;
@@ -187,6 +245,7 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
   }
   async function start(address) {
     if(server) throw Error('LokiShare is already running.');
+    await readHistory();
     const addresses=listPrivateInterfaces().map(x=>x.address);
     // Localhost allowed only for test harness; production UI must choose a private interface.
     if(!addresses.includes(address) && address!=='127.0.0.1') throw Error('Choose a connected private Wi-Fi/LAN interface.');
@@ -206,9 +265,10 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
   async function stop() {
     if(!server) return status();
     const old=server;server=null;hostURL=null;pairCode=null;joinSecret=null;tlsFingerprint=null;
-    pending.clear();clients.clear();downloads.clear();transfers.splice(0);failures.clear();
+    pending.clear();clients.clear();downloads.clear();failures.clear();
+    for(const t of [...transfers])if(t.status==='transferring')cancelTransfer(t.id);
     old.close();for(const socket of sockets)socket.destroy();sockets.clear();changed();
-    return status();
+    await historyQueue.catch(()=>{});return status();
   }
   function approve(id,accepted) {
     const p=pending.get(id);if(!p || p.status!=='pending' || clock()-p.created>PAIR_TTL) throw Error('Pairing request is no longer available.');
@@ -240,6 +300,6 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
     const query=new URLSearchParams({url:hostURL,join:joinSecret,fp:tlsFingerprint});
     return `lokiverse://pair?${query}`;
   }
-  return {listPrivateInterfaces,status,start,stop,approve,setInbox,addFiles,removeFile,revoke,inviteURL};
+  return {listPrivateInterfaces,status,start,stop,approve,setInbox,addFiles,removeFile,revoke,inviteURL,cancelTransfer,clearHistory,loadHistory:readHistory};
 }
 module.exports={createLokiShare,listPrivateInterfaces,safeFileName,MAX_FILE};

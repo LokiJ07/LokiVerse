@@ -24,7 +24,7 @@ let closeTimeout = null;
 const notifiedTasks = new Set();
 let reminderBusy = false;
 let remindersLoaded = false;
-const lokiShare = createLokiShare({identityDir: path.join(app.getPath('userData'),'share-security'), onChange: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('share:changed'); }});
+const lokiShare = createLokiShare({identityDir: path.join(app.getPath('userData'),'share-security'), historyFile: path.join(app.getPath('userData'),'lokishare-transfer-history.json'), onChange: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('share:changed'); }});
 
 function dataFile() { return path.join(app.getPath('userData'), 'lokiverse-data.json'); }
 function storage() { return createStorage(dataFile()); }
@@ -199,7 +199,7 @@ function registerHandlers() {
   });
   // Explicitly activated LAN sharing; never expose general filesystem operations over HTTPS.
   safeHandle('share:interfaces', () => listPrivateInterfaces());
-  safeHandle('share:status', () => lokiShare.status());
+  safeHandle('share:status', async () => { await lokiShare.loadHistory();return lokiShare.status(); });
   safeHandle('share:start', address => {
     if (!listPrivateInterfaces().some(entry => entry.address === address)) throw new Error('Select a private LAN/Wi-Fi address.');
     return lokiShare.start(address);
@@ -208,6 +208,8 @@ function registerHandlers() {
   safeHandle('share:approve', (id, accept) => lokiShare.approve(id, accept === true));
   safeHandle('share:revoke', id => lokiShare.revoke(id));
   safeHandle('share:removeFile', id => lokiShare.removeFile(id));
+  safeHandle('share:cancelTransfer', id => lokiShare.cancelTransfer(id));
+  safeHandle('share:clearHistory', () => lokiShare.clearHistory());
   safeHandle('share:chooseInbox', async () => {
     const selection = await dialog.showOpenDialog(mainWindow, {
       title: 'LokiShare: Choose folder for incoming files', properties: ['openDirectory']
