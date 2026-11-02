@@ -12,3 +12,13 @@
 10. If Android Gradle build fails, do not publish the Android component as ready. Diagnose the Android job log and patch before tagging a new version; never move an already-published tag.
 
 **Do not** publish any personal `.jks`, `.keystore`, private key, passwords, real QR pairing screenshots or API tokens.
+
+## Android duplicate-class hotfix (v0.4.2)
+
+The Android module uses Kotlin BOM 1.8.22 to align `kotlin-stdlib`,
+`kotlin-stdlib-jdk7`, and `kotlin-stdlib-jdk8` pulled by dependencies.
+Both Android workflows run `:app:verifyKotlinRuntimeAlignment` before tests
+and assembling the debug test APK. If CI fails at this task, examine the
+resolved debug runtime classpath; do not disable the duplicate-class check.
+Release a new `v0.4.2` tag only after both CI jobs pass. Do not move old tags.
+

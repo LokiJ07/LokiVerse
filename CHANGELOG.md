@@ -1,5 +1,15 @@
 # Changelog
 
+## v0.4.2 — Android Kotlin Gradle dependency fix
+
+- Aligned Kotlin runtime artifacts using `org.jetbrains.kotlin:kotlin-bom:1.8.22` to resolve `checkDebugDuplicateClasses` errors caused by older transitive JDK7/JDK8 stdlib modules.
+- Added `:app:verifyKotlinRuntimeAlignment` to both CI and release workflows; CI now checks resolved versions before building the debug APK.
+- Updated release asset naming to use the Git tag, instead of hard-coding a prior Android APK version.
+- Retained the Android SDK 35 setup fix, QR scanner improvements, Windows app identity, local data and HTTPS pairing protocol.
+- Bumped Windows version to 0.4.2 and Android versionName/versionCode to 0.4.2/6.
+- Android APK build and on-device camera test still require GitHub Actions / physical device verification.
+
+
 ## v0.4.1 — Android camera scanner stability hotfix
 
 - Migrated Android QR scanner to modern `ScanContract` / Activity Result API.

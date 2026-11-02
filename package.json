@@ -1,7 +1,7 @@
 {
   "name": "lokiverse",
   "productName": "LokiVerse",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "LokiVerse — offline-first productivity and pinned-HTTPS LokiShare on local Wi-Fi.",
   "author": "LokiJ",
   "license": "MIT",

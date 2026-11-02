@@ -1,6 +1,16 @@
-# 💜 LokiVerse v0.4.1 — Secure LokiShare + Android Companion
+# 💜 LokiVerse v0.4.2 — Kotlin dependency alignment hotfix
 
 **LokiVerse** is an offline-first Windows desktop productivity hub (Tasks, Notes, Files, SystemPulse) with local Wi-Fi transfer functionality. v0.4.0 adds encrypted transport and the source for a native Android LokiShare companion. MIT license.
+
+## Android Kotlin duplicate-class CI hotfix (v0.4.2)
+
+- Fixes the **Gradle `:app:checkDebugDuplicateClasses`** failure when `kotlin-stdlib:1.8.22` appears together with legacy `kotlin-stdlib-jdk7/jdk8:1.6.21`.
+- Adds `implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')` to `android-companion/app/build.gradle`. The BOM aligns transitive Kotlin runtime variants **without removing ZXing or AndroidX libraries**.
+- Adds a Gradle verification task, `:app:verifyKotlinRuntimeAlignment`, and runs it in **both** Android CI and release jobs before APK packaging.
+- Keeps the Android SDK `setup-android@v4` fix and the v0.4.1 QR scanner stability changes.
+- Ensures Android TEST release APK filename follows the pushed tag version rather than being hard-coded.
+- Version bump: **Windows 0.4.2**, **Android versionCode 6 / versionName 0.4.2**. `com.lokij.lokiverse` and `com.lokij.lokishare` identities are unchanged.
+- **Not confirmed on GitHub runners yet:** the CI build is the acceptance test. An APK that builds is **not** proof that scanning is crash-free on your phone; test the physical device after installing.
 
 ## Android QR scanner hotfix (v0.4.1)
 
@@ -32,8 +42,8 @@
 
 ## 📲 Pairing instructions (Windows + Android)
 
-1. Update your Windows LokiVerse to v0.4.1 using the `LokiVerse-0.4.1-Setup-x64.exe` installer. Back up your notes/tasks first.
-2. On your Android 8.0+ device, install the **v0.4.1 Android TEST APK** from the GitHub release or the Android CI artifact. Use only APKs built from your own repository. Android may require enabling installation from your browser/files app.
+1. Update your Windows LokiVerse to v0.4.2 using the `LokiVerse-0.4.2-Setup-x64.exe` installer. Back up your notes/tasks first.
+2. On your Android 8.0+ device, install the **v0.4.2 Android TEST APK** from the GitHub release or the Android CI artifact. Use only APKs built from your own repository. Android may require enabling installation from your browser/files app.
 3. Connect both devices to the same **trusted private Wi-Fi**. Open Windows **LokiShare**, choose the Wi-Fi interface and click **Start sharing**. Use **Choose receive folder** to enable incoming files.
 4. Open **LokiShare** on Android and tap **Scan pairing QR**. Scan the purple QR displayed in the Windows app. The Android app validates the invitation format and pins the TLS certificate fingerprint encoded in the QR. **Use the Android companion scanner, not your standard browser QR scanner.**
 5. Tap **Request secure pairing** on Android. Compare the six-digit number with the one on the Windows pairing request. Click **Approve** on Windows **only if they match**.
@@ -49,7 +59,7 @@ No internet connection is needed for *local transfers*. Initial APK installation
 
 The Android workflow previously called `android-actions/setup-android@v3`, whose default SDK package list could request the removed legacy `tools` package. This caused `Failed to find package 'tools'` / exit 1 **before Gradle compiled the app**. The two workflows now call `android-actions/setup-android@v4` with `packages: 'platform-tools'`, then explicitly install `platforms;android-35` and `build-tools;35.0.0` using `sdkmanager --install`. The workflow also checks that the SDK platform jar and build-tools directory exist before running Gradle.
 
-The Android SDK setup fix was retained; v0.4.1 additionally addresses QR scanner stability. **This patch has not been verified on GitHub's runners yet**; push to `main` and inspect the Android CI job before tagging. If `v0.4.0` was already tagged, do not move that tag: create a new patch version/tag instead.
+The Android SDK setup fix and v0.4.1 QR scanner stability changes are retained. v0.4.2 aligns Kotlin runtime versions. **This version has not been verified on GitHub's runners yet**; push to `main` and inspect the Android CI job before tagging. If `v0.4.0` was already tagged, do not move that tag: create a new patch version/tag instead.
 
 ## Developer commands
 
@@ -75,18 +85,18 @@ Copy the ZIP's contents into your current `LokiVerse` Git checkout, **including 
 
 ```bash
 git add -A
-git commit -m "fix: LokiVerse v0.4.1 Android QR scanner stability"
+git commit -m "fix: align Android Kotlin runtime dependencies in v0.4.2"
 git push origin main
 ```
 
 Wait for **both** `verify-and-build` (Windows) and `android-companion` (Android) CI jobs to pass. **Do not tag if either fails.** Then:
 
 ```bash
-git tag v0.4.1
-git push origin v0.4.1
+git tag v0.4.2
+git push origin v0.4.2
 ```
 
-The release workflow publishes `LokiVerse-0.4.0-Setup-x64.exe`, `SHA256SUMS.txt` and (when its separate Android job succeeds) `LokiShare-0.4.0-Android-TEST.apk` + its checksum. An **Android APK build has not been executed in this generation environment**: GitHub Actions will perform the first real Android compilation. The HTTPS backend tests passed locally, but physical device testing must still be done.
+The release workflow is configured to publish `LokiVerse-0.4.2-Setup-x64.exe`, `SHA256SUMS.txt` and (when its separate Android job succeeds) `LokiShare-0.4.2-Android-TEST.apk` + its checksum. An **Android APK build has not been executed in this generation environment**: GitHub Actions will perform the first real Android compilation. The HTTPS backend tests passed locally, but physical device testing must still be done.
 
 ## Architecture
 

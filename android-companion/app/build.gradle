@@ -7,8 +7,8 @@ android {
         applicationId 'com.lokij.lokishare'
         minSdk 26
         targetSdk 35
-        versionCode 5
-        versionName '0.4.1'
+        versionCode 6
+        versionName '0.4.2'
     }
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17
@@ -17,7 +17,43 @@ android {
 }
 
 dependencies {
+    // A transitive scanner/AndroidX dependency can request old Kotlin JDK variants
+    // (1.6.21), while AndroidX resolves kotlin-stdlib 1.8.22. Kotlin 1.8+ merged
+    // those JDK variants into the main stdlib: align all runtime variants via BOM.
+    // This Java Android project does not apply the Kotlin Gradle plugin, so it
+    // cannot rely on that plugin's automatic stdlib alignment.
+    implementation platform('org.jetbrains.kotlin:kotlin-bom:1.8.22')
     implementation 'com.journeyapps:zxing-android-embedded:4.3.0'
     implementation 'androidx.activity:activity:1.9.3'
     testImplementation 'junit:junit:4.13.2'
+}
+
+// Run before APK packaging to catch Kotlin runtime drift on future CI updates.
+tasks.register('verifyKotlinRuntimeAlignment') {
+    group = 'verification'
+    description = 'Verify all resolved Kotlin stdlib variants use 1.8.22.'
+    doLast {
+        def expected = '1.8.22'
+        def names = ['kotlin-stdlib', 'kotlin-stdlib-jdk7', 'kotlin-stdlib-jdk8']
+        def resolved = configurations.debugRuntimeClasspath.resolvedConfiguration.resolvedArtifacts
+            .findAll { artifact ->
+                artifact.moduleVersion.id.group == 'org.jetbrains.kotlin' && names.contains(artifact.name)
+            }
+        if (!resolved.any { artifact -> artifact.name == 'kotlin-stdlib' }) {
+            throw new GradleException('Expected kotlin-stdlib missing from debugRuntimeClasspath')
+        }
+        def incompatible = resolved.findAll { artifact ->
+            artifact.moduleVersion.id.version != expected
+        }
+        if (!incompatible.isEmpty()) {
+            def details = incompatible.collect { artifact ->
+                "${artifact.moduleVersion.id.group}:${artifact.name}:${artifact.moduleVersion.id.version}"
+            }.join(', ')
+            throw new GradleException("Kotlin runtime versions not aligned to ${expected}: ${details}")
+        }
+        def details = resolved.collect { artifact ->
+            "${artifact.name}:${artifact.moduleVersion.id.version}"
+        }.sort().join(', ')
+        println "Kotlin runtime aligned: ${details}"
+    }
 }
