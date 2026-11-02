@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.4.1 — Android camera scanner stability hotfix
+
+- Migrated Android QR scanner to modern `ScanContract` / Activity Result API.
+- Explicit camera permission and no-camera handling; scan-launch errors surface as usable messages.
+- Unlocked camera orientation and explicitly declared ZXing CaptureActivity in app manifest.
+- Basic QR payload validation and Android JVM regression tests; strict PinnedClient HTTPS checks unchanged.
+- Updated CI and release workflows to run Android tests before APK packaging.
+- Preserved Windows app ID, NSIS installer identity, local data layout, pairing protocol and certificate pinning.
+- **Android TEST APK is not signing-stable**; do not promise no-uninstall updates.
+- Real-device crash resolution requires a new Android build and device-level verification. Attach an `adb logcat` crash trace if force stop persists.
+
 ## v0.4.0 — Secure LokiShare + Native Android Companion (source preview)
 
 - Switched temporary LokiShare listener from HTTP to HTTPS, with independent TLS identity generated on the PC on first use.

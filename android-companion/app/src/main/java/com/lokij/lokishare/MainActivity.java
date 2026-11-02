@@ -1,6 +1,13 @@
 package com.lokij.lokishare;
 
-import android.app.Activity;
+import android.Manifest;
+import android.content.pm.PackageManager;
+import android.util.Log;
+import androidx.activity.ComponentActivity;
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
+import com.journeyapps.barcodescanner.ScanContract;
+import com.journeyapps.barcodescanner.ScanOptions;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -18,8 +25,6 @@ import android.widget.ScrollView;
 import android.widget.TextView;
 import android.widget.Toast;
 
-import com.google.zxing.integration.android.IntentIntegrator;
-import com.google.zxing.integration.android.IntentResult;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
@@ -27,7 +32,8 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 
 /** Standalone Android companion. No WebView and no insecure HTTP fallback. */
-public final class MainActivity extends Activity {
+public final class MainActivity extends ComponentActivity {
+    private static final String SCAN_TAG="LokiShareScanner";
     private static final int REQUEST_SEND=31,REQUEST_SAVE=32;
     private final ExecutorService io=Executors.newSingleThreadExecutor();
     private final Handler handler=new Handler(Looper.getMainLooper());
@@ -38,6 +44,27 @@ public final class MainActivity extends Activity {
     private EditText inviteInput;
     private TextView status, detail, match;
     private Button pairButton,sendButton,refreshButton;
+    // Lifecycle-aware scanner result handling. No deprecated IntentIntegrator request code.
+    private final ActivityResultLauncher<ScanOptions> scanLauncher =
+        registerForActivityResult(new ScanContract(), result -> {
+            if (result == null || result.getContents() == null) {
+                if (status != null) status.setText("QR scan cancelled. You can retry or paste an invitation.");
+                return;
+            }
+            final String scanned = result.getContents();
+            try {
+                String checked = PairingInput.validate(scanned);
+                inviteInput.setText(checked);
+                loadInvitation();
+            } catch (IllegalArgumentException ex) {
+                showError(new Exception(ex.getMessage()));
+            }
+        });
+    private final ActivityResultLauncher<String> cameraPermission =
+        registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+            if (granted) launchScanner();
+            else showError(new Exception("Camera permission denied. Enable it in Android Settings or paste the pairing invitation."));
+        });
     private final Runnable pollTask=new Runnable(){
         @Override public void run(){
             if(!waiting||client==null)return;
@@ -75,7 +102,7 @@ public final class MainActivity extends Activity {
         block(text("Secure transfers between your Android phone and LokiVerse on Windows.",15,Color.rgb(184,185,214)));
         block(text("① Pair with Windows",20,Color.WHITE));
         Button scan=button("📷 Scan pairing QR");block(scan);
-        scan.setOnClickListener(v->new IntentIntegrator(this).setDesiredBarcodeFormats(IntentIntegrator.QR_CODE).setPrompt("Scan QR shown on Windows LokiShare").initiateScan());
+        scan.setOnClickListener(v->startScanner());
         inviteInput=new EditText(this);inviteInput.setTextColor(Color.WHITE);inviteInput.setHintTextColor(Color.GRAY);inviteInput.setTextSize(13);inviteInput.setSingleLine(false);inviteInput.setMinLines(2);inviteInput.setHint("Or paste full lokiverse://pair invitation");inviteInput.setBackground(background(Color.rgb(31,32,55)));inviteInput.setPadding(dp(14),dp(10),dp(14),dp(10));block(inviteInput);
         Button use=button("Verify invitation");block(use);use.setOnClickListener(v->loadInvitation());
         pairButton=button("Request secure pairing");block(pairButton);pairButton.setEnabled(false);pairButton.setOnClickListener(v->requestPair());
@@ -90,9 +117,39 @@ public final class MainActivity extends Activity {
         fileList=new LinearLayout(this);fileList.setOrientation(LinearLayout.VERTICAL);block(fileList);
         block(text("Use private Wi-Fi. Every connection is approved by the PC. No files are shared unless you choose them.",12,Color.rgb(157,156,182)));
     }
+    /** Fail gracefully on devices without a usable camera, or when launch is blocked. */
+    private void startScanner() {
+        if (!getPackageManager().hasSystemFeature(PackageManager.FEATURE_CAMERA_ANY)) {
+            showError(new Exception("No camera detected. Paste the LokiVerse pairing invitation instead."));
+            return;
+        }
+        if (checkSelfPermission(Manifest.permission.CAMERA) != PackageManager.PERMISSION_GRANTED) {
+            try { cameraPermission.launch(Manifest.permission.CAMERA); }
+            catch (RuntimeException ex) { scannerLaunchError(ex); }
+            return;
+        }
+        launchScanner();
+    }
+    private void launchScanner() {
+        try {
+            ScanOptions options = new ScanOptions();
+            options.setDesiredBarcodeFormats(ScanOptions.QR_CODE);
+            options.setPrompt("Scan the LokiVerse QR code on Windows");
+            options.setBeepEnabled(false);
+            // Avoid orientation lock that some camera/Android versions handle poorly.
+            options.setOrientationLocked(false);
+            scanLauncher.launch(options);
+        } catch (RuntimeException | LinkageError ex) {
+            scannerLaunchError(ex);
+        }
+    }
+    private void scannerLaunchError(Throwable error) {
+        Log.e(SCAN_TAG,"Unable to launch camera scanner",error);
+        showError(new Exception("Could not open camera scanner. Paste the pairing invitation, or check camera permissions."));
+    }
     private void loadInvitation(){
         try {
-            client=new PinnedClient(inviteInput.getText().toString().trim());active=false;waiting=false;
+            client=new PinnedClient(PairingInput.validate(inviteInput.getText().toString()));active=false;waiting=false;
             pairButton.setEnabled(true);sendButton.setEnabled(false);refreshButton.setEnabled(false);
             status.setText("✓ QR validated — ready to request pairing");
             match.setText("PC: "+client.address()+"\nCertificate fingerprint pinned from QR.");
@@ -116,10 +173,6 @@ public final class MainActivity extends Activity {
         },this::showError);
     }
     @Override protected void onActivityResult(int request,int result,Intent data){super.onActivityResult(request,result,data);
-        if(request==IntentIntegrator.REQUEST_CODE){
-            IntentResult scan=IntentIntegrator.parseActivityResult(request,result,data);
-            if(scan!=null&&scan.getContents()!=null){inviteInput.setText(scan.getContents());loadInvitation();}return;
-        }
         if(result!=RESULT_OK||data==null||client==null||!active)return;
         if(request==REQUEST_SEND){
             java.util.ArrayList<Uri> uris=new java.util.ArrayList<>();

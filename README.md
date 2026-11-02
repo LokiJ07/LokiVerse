@@ -1,6 +1,18 @@
-# 💜 LokiVerse v0.4.0 — Secure LokiShare + Android Companion
+# 💜 LokiVerse v0.4.1 — Secure LokiShare + Android Companion
 
 **LokiVerse** is an offline-first Windows desktop productivity hub (Tasks, Notes, Files, SystemPulse) with local Wi-Fi transfer functionality. v0.4.0 adds encrypted transport and the source for a native Android LokiShare companion. MIT license.
+
+## Android QR scanner hotfix (v0.4.1)
+
+- QR scanner uses ZXing `ScanContract` + AndroidX Activity Result API instead of deprecated `IntentIntegrator`.
+- Requests CAMERA permission explicitly and handles denial with an on-screen message.
+- Checks for camera hardware and catches scanner launch failures instead of crashing the main screen.
+- Disables camera activity orientation locking for better compatibility with Android versions/devices.
+- Validates QR input size/type before sending it to the original strict, pinned-HTTPS invitation parser.
+- Keeps manual invitation pasting available if a phone scanner remains unsupported.
+- Android unit tests verify rejected unsafe/invalid scanned inputs; CI runs Android tests before assembling the TEST APK.
+- **Actual root cause of the reported force-stop is not known until Android Logcat is captured.** This hotfix targets likely scanner launch and permission weaknesses, but does not guarantee every camera driver will work.
+- Android TEST APKs remain debug-signed per GitHub runner, so uninstalling the previous Android test APK may be necessary; Windows app updates retain the same NSIS identity.
 
 ## What's new
 
@@ -20,8 +32,8 @@
 
 ## 📲 Pairing instructions (Windows + Android)
 
-1. Update your Windows LokiVerse to v0.4.0 using the `LokiVerse-0.4.0-Setup-x64.exe` installer. Back up your notes/tasks first.
-2. On your Android 8.0+ device, install the **v0.4.0 Android TEST APK** from the GitHub release or the Android CI artifact. Use only APKs built from your own repository. Android may require enabling installation from your browser/files app.
+1. Update your Windows LokiVerse to v0.4.1 using the `LokiVerse-0.4.1-Setup-x64.exe` installer. Back up your notes/tasks first.
+2. On your Android 8.0+ device, install the **v0.4.1 Android TEST APK** from the GitHub release or the Android CI artifact. Use only APKs built from your own repository. Android may require enabling installation from your browser/files app.
 3. Connect both devices to the same **trusted private Wi-Fi**. Open Windows **LokiShare**, choose the Wi-Fi interface and click **Start sharing**. Use **Choose receive folder** to enable incoming files.
 4. Open **LokiShare** on Android and tap **Scan pairing QR**. Scan the purple QR displayed in the Windows app. The Android app validates the invitation format and pins the TLS certificate fingerprint encoded in the QR. **Use the Android companion scanner, not your standard browser QR scanner.**
 5. Tap **Request secure pairing** on Android. Compare the six-digit number with the one on the Windows pairing request. Click **Approve** on Windows **only if they match**.
@@ -37,7 +49,7 @@ No internet connection is needed for *local transfers*. Initial APK installation
 
 The Android workflow previously called `android-actions/setup-android@v3`, whose default SDK package list could request the removed legacy `tools` package. This caused `Failed to find package 'tools'` / exit 1 **before Gradle compiled the app**. The two workflows now call `android-actions/setup-android@v4` with `packages: 'platform-tools'`, then explicitly install `platforms;android-35` and `build-tools;35.0.0` using `sdkmanager --install`. The workflow also checks that the SDK platform jar and build-tools directory exist before running Gradle.
 
-The app, version `0.4.0`, and signing configuration are unchanged. **This patch has not been verified on GitHub's runners yet**; push to `main` and inspect the Android CI job before tagging. If `v0.4.0` was already tagged, do not move that tag: create a new patch version/tag instead.
+The Android SDK setup fix was retained; v0.4.1 additionally addresses QR scanner stability. **This patch has not been verified on GitHub's runners yet**; push to `main` and inspect the Android CI job before tagging. If `v0.4.0` was already tagged, do not move that tag: create a new patch version/tag instead.
 
 ## Developer commands
 
@@ -63,15 +75,15 @@ Copy the ZIP's contents into your current `LokiVerse` Git checkout, **including 
 
 ```bash
 git add -A
-git commit -m "feat: LokiVerse v0.4.0 secure LokiShare and Android companion"
+git commit -m "fix: LokiVerse v0.4.1 Android QR scanner stability"
 git push origin main
 ```
 
 Wait for **both** `verify-and-build` (Windows) and `android-companion` (Android) CI jobs to pass. **Do not tag if either fails.** Then:
 
 ```bash
-git tag v0.4.0
-git push origin v0.4.0
+git tag v0.4.1
+git push origin v0.4.1
 ```
 
 The release workflow publishes `LokiVerse-0.4.0-Setup-x64.exe`, `SHA256SUMS.txt` and (when its separate Android job succeeds) `LokiShare-0.4.0-Android-TEST.apk` + its checksum. An **Android APK build has not been executed in this generation environment**: GitHub Actions will perform the first real Android compilation. The HTTPS backend tests passed locally, but physical device testing must still be done.
@@ -88,3 +100,14 @@ The release workflow publishes `LokiVerse-0.4.0-Setup-x64.exe`, `SHA256SUMS.txt`
 | CI/CD | GitHub Actions, electron-builder NSIS, Android Gradle Plugin |
 
 **Security notes:** See [`docs/LOKISHARE.md`](docs/LOKISHARE.md). Certificate private key is stored under Windows app userData `share-security/`, **not** in the GitHub source. The QR invitation is a temporary secret; do not post a screenshot of your live pairing QR publicly. Because v0.3.0 used HTTP, it cannot connect securely to a v0.4.0 server; update Windows first and use the new Android companion.
+
+## If Scan QR still force-stops the app
+
+The exact root cause cannot be established from a successful CI build or from the symptom alone. If it persists, collect the device exception:
+
+1. On a PC with Google's Android Platform Tools installed and USB debugging enabled on your phone, connect the phone over USB.
+2. Run `adb logcat -c` to clear the previous log buffer, tap **Scan pairing QR** and reproduce the crash.
+3. Run `adb logcat -d -v time > lokishare-crash.txt` and search for `FATAL EXCEPTION`, `AndroidRuntime`, or `com.lokij.lokishare`.
+4. Share only the relevant crash stack trace after removing personal details, file paths and pairing QR codes/secrets.
+
+This is more reliable than guessing whether camera permissions or the camera driver caused the force-stop. Do not publish full device log files publicly.

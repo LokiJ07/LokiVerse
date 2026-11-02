@@ -63,17 +63,17 @@ jobs:
           test -d "$ANDROID_SDK_ROOT/build-tools/35.0.0"
       - name: Build Android test APK
         working-directory: android-companion
-        run: gradle --no-daemon :app:assembleDebug
+        run: gradle --no-daemon :app:testDebugUnitTest :app:assembleDebug
       - name: Label build clearly as TEST ONLY
         shell: bash
         run: |
           mkdir -p android-out
-          cp android-companion/app/build/outputs/apk/debug/*.apk android-out/LokiShare-0.4.0-Android-TEST.apk
+          cp android-companion/app/build/outputs/apk/debug/*.apk android-out/LokiShare-0.4.1-Android-TEST.apk
           (cd android-out && sha256sum *.apk > SHA256SUMS-ANDROID-TEST.txt)
       - name: Attach test-only Android APK to GitHub Release
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            android-out/LokiShare-0.4.0-Android-TEST.apk
+            android-out/LokiShare-0.4.1-Android-TEST.apk
             android-out/SHA256SUMS-ANDROID-TEST.txt
           fail_on_unmatched_files: true
