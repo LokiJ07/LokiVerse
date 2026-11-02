@@ -4,7 +4,8 @@ const fs = require('node:fs/promises');
 const path = require('node:path');
 const https = require('node:https');
 const os = require('node:os');
-const { normalizeData, compareVersions, isWithinFolder } = require('./shared/logic.cjs');
+const { compareVersions, isWithinFolder } = require('./shared/logic.cjs');
+const { createStorage } = require('./shared/storage.cjs');
 
 // Keep this identifier, package.json build.appId, and productName stable across releases.
 // Electron's userData directory is likewise kept stable: installs preserve tasks and notes.
@@ -13,26 +14,19 @@ let mainWindow;
 let selectedRoot = null;
 let saving = Promise.resolve();
 let cpuPrevious = null;
+let workspaceRecovery = null;
+let allowingClose = false;
+let waitingForClose = false;
+let closeTimeout = null;
 
 function dataFile() { return path.join(app.getPath('userData'), 'lokiverse-data.json'); }
-function defaultData() { return normalizeData({}); }
+function storage() { return createStorage(dataFile()); }
 async function readData() {
-  try { return normalizeData(JSON.parse(await fs.readFile(dataFile(), 'utf8'))); }
-  catch (error) {
-    if (error.code === 'ENOENT') return defaultData();
-    throw new Error('Could not read saved data. Export or restore your backup before continuing: ' + error.message);
-  }
+  const result = await storage().read();
+  if (result.recovered) workspaceRecovery = 'A previous backup was recovered after an unreadable workspace file. The original was preserved in your data folder.';
+  return result.data;
 }
-async function writeData(data) {
-  const normalized = normalizeData(data);
-  const content = JSON.stringify(normalized, null, 2);
-  if (Buffer.byteLength(content) > 15 * 1024 * 1024) throw new Error('Workspace is too large to save.');
-  await fs.mkdir(path.dirname(dataFile()), { recursive: true });
-  const tmp = dataFile() + '.tmp';
-  await fs.writeFile(tmp, content, { encoding: 'utf8', mode: 0o600 });
-  await fs.rename(tmp, dataFile());
-  return normalized;
-}
+async function writeData(data) { return storage().write(data); }
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1350, height: 850, minWidth: 980, minHeight: 640,
@@ -45,6 +39,26 @@ function createWindow() {
       webSecurity: true
     }
   });
+  mainWindow.webContents.session.setPermissionRequestHandler((_contents, _permission, callback) => callback(false));
+  mainWindow.on('close', event => {
+    if (allowingClose) return;
+    event.preventDefault();
+    if (waitingForClose) return;
+    waitingForClose = true;
+    mainWindow.webContents.send('app:requestClose');
+    closeTimeout = setTimeout(async () => {
+      closeTimeout = null;
+      if (!mainWindow || mainWindow.isDestroyed() || !waitingForClose) return;
+      const result = await dialog.showMessageBox(mainWindow, {
+        type: 'warning', title: 'LokiVerse is still saving',
+        message: 'The workspace did not confirm that saving finished.',
+        detail: 'You can keep the app open or close it without confirming the latest changes were saved.',
+        buttons: ['Keep open', 'Close anyway'], defaultId: 0, cancelId: 0
+      });
+      waitingForClose = false;
+      if (result.response === 1) { allowingClose = true; mainWindow.close(); }
+    }, 12000);
+  });
   mainWindow.loadFile(path.join(__dirname, 'renderer', 'index.html'));
   mainWindow.once('ready-to-show', () => mainWindow.show());
   mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
@@ -56,6 +70,21 @@ const safeHandle = (name, fn) => ipcMain.handle(name, (_, ...args) => fn(...args
 function registerHandlers() {
   safeHandle('app:getInfo', () => ({ version: app.getVersion(), repository: RELEASE_REPOSITORY, dataDirectory: app.getPath('userData') }));
   safeHandle('data:load', readData);
+  safeHandle('data:recoveryStatus', () => { const message = workspaceRecovery; workspaceRecovery = null; return message; });
+  safeHandle('app:completeClose', async wasSaved => {
+    if (!waitingForClose) return false;
+    if (closeTimeout) clearTimeout(closeTimeout);
+    closeTimeout = null;
+    waitingForClose = false;
+    if (wasSaved !== true) {
+      await dialog.showMessageBox(mainWindow, { type: 'error', title: 'Workspace was not saved', message: 'Your latest changes could not be saved. LokiVerse will remain open so you can retry or make a backup.' });
+      return false;
+    }
+    await saving;
+    allowingClose = true;
+    mainWindow.close();
+    return true;
+  });
   safeHandle('data:save', data => {
     const operation = saving.then(() => writeData(data));
     saving = operation.catch(() => {});

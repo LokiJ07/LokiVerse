@@ -21,7 +21,8 @@ function normalizeData(raw) {
       body: trimText(x.body, 100000), updatedAt: trimText(x.updatedAt, 40)
     })),
     settings: {
-      displayName: trimText(object.settings?.displayName, 50) || 'Creator'
+      displayName: trimText(object.settings?.displayName, 50) || 'Creator',
+      accent: ['purple', 'cyan', 'sunset'].includes(object.settings?.accent) ? object.settings.accent : 'purple'
     }
   };
 }

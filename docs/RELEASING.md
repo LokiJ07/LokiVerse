@@ -2,9 +2,9 @@
 
 ## Important architectural decision
 
-LokiVerse v0.1.0 intentionally uses **electron-builder NSIS installers** with a stable `appId` and per-user install mode. This permits installing a newer Windows setup over a compatible prior installation **without asking users to manually uninstall**. The release workflow does not require a custom signing secret or Android keystore.
+LokiVerse uses **electron-builder NSIS installers** with a stable `appId` and per-user install mode. This permits installing a newer Windows setup over a compatible prior installation **without asking users to manually uninstall**. The release workflow does not require a custom signing secret or Android keystore.
 
-This is not an automatic background updater. In v0.1.0, the app checks the newest public GitHub Release and opens the official download page for you.
+This is not an automatic background updater. In v0.1.1, the app checks the newest public GitHub Release and opens the official download page for you.
 
 ## First release (`v0.1.0`)
 
@@ -19,6 +19,8 @@ This is not an automatic background updater. In v0.1.0, the app checks the newes
 - [ ] Export backup and restore a test backup.
 
 ## First upgrade test (`v0.1.0` → `v0.1.1`)
+
+**Before testing:** export a JSON backup in v0.1.0 and store it outside the LokiVerse data folder.
 
 - [ ] Increase `package.json` `version` to `0.1.1`.
 - [ ] **Do not change** `build.appId`, `productName`, NSIS install scope, or storage path.

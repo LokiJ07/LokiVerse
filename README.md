@@ -12,21 +12,21 @@ Windows desktop creator workspace · Offline-first · Open-source · Midnight Au
 
 </div>
 
-## ✨ LokiVerse v0.1.0 — Creator Edition
+## ✨ LokiVerse v0.1.1 — UI & Stability Update
 
 LokiVerse is a real Windows desktop app, not a hosted website. All your notes and tasks are stored locally on your computer.
 
 | Module | Included today? | Features |
 | --- | --- | --- |
-| Overview | ✅ | At-a-glance metrics, pending tasks, quick launch |
+| Overview | ✅ | At-a-glance metrics, task progress, pending tasks, quick launch |
 | My Tasks | ✅ | Add, prioritize, set deadlines, complete, delete |
-| LokiNotes | ✅ | Create, edit, search, delete, automatic local saving |
+| LokiNotes | ✅ | Create, edit, search, delete, automatic local saving, word count |
 | LokiFiles | ✅ | Choose a folder, browse, open files, reveal in Explorer. **Read-only** |
 | SystemPulse | ✅ | CPU utilization estimate, RAM usage, device details |
-| Settings | ✅ | Display name, export/restore backup, check GitHub Releases |
+| Settings | ✅ | Display name, theme accent, export/restore backup, check GitHub Releases |
 | LokiShare | 🚧 Planned | Android↔Windows transfer; **not implemented** yet |
 
-> This is a v0.1.0 prototype. Local persistence and updater logic are implemented, but the Windows installer has to be built and tested through the included GitHub workflow.
+> v0.1.1 builds on the tested v0.1.0 design. Source-level tests and browser UI smoke tests passed in the development environment; Windows upgrade validation is still required.
 
 ## 📦 Setup on Windows
 
@@ -47,6 +47,8 @@ npm run dist:win
 The resulting `.exe` should be under `release/`.
 
 ## 🤖 GitHub Actions — build & release (no custom secrets)
+
+> The following section describes creating a brand-new repository only. Existing v0.1.0 users should follow the **upgrade instructions above** instead.
 
 1. **Create a public empty GitHub repository named `LokiVerse`** under the **`LokiJ07`** account. Do not initialize the remote with README or license (both are included here).
 2. Open Git Bash or VS Code terminal in the **LokiVerse** project folder.
@@ -75,6 +77,33 @@ The release workflow uses GitHub's **automatic `GITHUB_TOKEN`**, not a manually 
 
 **If your GitHub username or repository name differs**, update `RELEASE_REPOSITORY` in `src/main.cjs`, the repository links in this file, and your git remote **before publishing v0.1.0**, otherwise the app's update checker will look at the wrong repo.
 
+## 🔥 Upgrade your existing v0.1.0 installation to v0.1.1
+
+**You already have a Git repository and v0.1.0 installed. Do NOT initialize a new repository.**
+
+1. **Before upgrading**, in LokiVerse v0.1.1 go to Settings → Export, and keep an external JSON backup.
+2. Extract the v0.1.1 source ZIP. Copy the **contents** of its `LokiVerse-v0.1.1` directory into your current local `LokiVerse` Git repository folder, replacing files when asked. Do not overwrite/delete your `.git` folder.
+3. In Git Bash, opened in the existing repository:
+
+```bash
+npm run check   # if dependencies are already installed; otherwise npm install first
+git add -A
+git commit -m "feat: LokiVerse v0.1.1 UI and stability"
+git push origin main
+```
+
+4. Check GitHub Actions → LokiVerse Windows CI. When green, publish the new version:
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+5. Check GitHub Releases → v0.1.1 and download `LokiVerse-0.1.1-Setup-x64.exe`.
+6. **Close v0.1.0 and run the new installer over it. Do not manually uninstall v0.1.0.** Launch LokiVerse and verify that your tasks and notes survived, that Settings says `v0.1.1`, and that Ctrl+K works.
+
+See [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASING.md](docs/RELEASING.md).
+
 ## 🔁 Release new versions without uninstalling the old version
 
 LokiVerse uses a per-user NSIS Windows installer. Upgrades rely on these **stable values**:
@@ -85,7 +114,7 @@ LokiVerse uses a per-user NSIS Windows installer. Upgrades rely on these **stabl
 - Electron user data location (typically `%APPDATA%\LokiVerse`) — keep consistent.
 - The `package.json` version must increase on each release.
 
-**Example upgrade to v0.2.0:**
+**Example later upgrade to v0.2.0:**
 
 1. Make changes, then change `"version": "0.1.0"` to `"version": "0.2.0"` in `package.json`.
 2. Commit and push changes to `main`.
@@ -100,7 +129,7 @@ The built-in update checker fetches the latest **public** stable GitHub Release 
 
 ## 🔐 Privacy, permissions and safety
 
-- LokiVerse v0.1.0 does not transmit task or note contents to any server.
+- LokiVerse v0.1.1 does not transmit task or note contents to any server.
 - GitHub API access occurs only after you ask to check for updates.
 - LokiFiles shows files only within a folder selected by the user; it does not delete, move, or rewrite them. Symbolic links pointing outside the selected root are blocked.
 - UI content is escaped to avoid HTML injection, and `contextIsolation`, `sandbox`, and a narrow preload bridge are enabled.

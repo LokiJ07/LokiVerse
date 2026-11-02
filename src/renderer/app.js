@@ -29,7 +29,7 @@ const q = selector => document.querySelector(selector);
 const panel = q('#content');
 const pages = {home:'Overview',tasks:'My Tasks',notes:'LokiNotes',files:'LokiFiles',monitor:'SystemPulse',share:'LokiShare',settings:'Settings'};
 let data = {tasks:[],notes:[],settings:{displayName:'Creator'}};
-let info = {version:'0.1.0'};
+let info = {version:'0.1.1'};
 let currentView = 'home';
 let taskFilter = 'all';
 let selectedNoteId = null;
@@ -40,6 +40,30 @@ let system = null;
 let monitorTimer = null;
 let saveChain = Promise.resolve();
 let noteSaveTimer = null;
+let saveRevision = 0;
+let paletteVisible = false;
+let paletteQuery = '';
+let paletteItems = [];
+let paletteIndex = 0;
+
+function setSaveStatus(status, label) {
+  const badge = q('#saveStatus');
+  if (!badge) return;
+  badge.dataset.status = status;
+  badge.textContent = label;
+}
+function flushNoteEdits() {
+  if (noteSaveTimer) {
+    clearTimeout(noteSaveTimer);
+    noteSaveTimer = null;
+    return persist();
+  }
+  return saveChain;
+}
+function applyAccent() {
+  document.body.dataset.accent = data.settings?.accent || 'purple';
+}
+
 
 function toast(message, error = false) {
   const box = document.createElement('div'); box.className = `toast ${error ? 'error' : ''}`; box.textContent = message;
@@ -49,8 +73,16 @@ function toast(message, error = false) {
 function fail(error) { toast(error?.message || String(error), true); }
 function persist(showToast = false) {
   const snapshot = JSON.parse(JSON.stringify(data));
+  const revision = ++saveRevision;
+  setSaveStatus('saving', '● Saving…');
   saveChain = saveChain.catch(() => {}).then(() => window.loki.save(snapshot));
-  saveChain.then(() => { if (showToast) toast('Workspace saved locally.'); }).catch(fail);
+  saveChain.then(() => {
+    if (revision === saveRevision) setSaveStatus('saved', '✓ Saved locally');
+    if (showToast) toast('Workspace saved locally.');
+  }).catch(error => {
+    setSaveStatus('error', '⚠ Save failed');
+    fail(error);
+  });
   return saveChain;
 }
 function id() { return `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
@@ -64,7 +96,7 @@ function bytes(value) { if (!Number.isFinite(value)) return '—'; const units=[
 function renderNavIcons() { document.querySelectorAll('[data-icon]').forEach(el => { el.outerHTML = icon(el.dataset.icon); }); }
 function switchView(view) {
   if (!pages[view]) return;
-  if (noteSaveTimer) { clearTimeout(noteSaveTimer); noteSaveTimer = null; persist(); }
+  flushNoteEdits();
   if (monitorTimer) { clearInterval(monitorTimer); monitorTimer = null; }
   currentView = view;
   q('#topTitle').textContent = pages[view];
@@ -90,11 +122,16 @@ function render() {
 function renderHome() {
   const pending = data.tasks.filter(t=>!t.completed);
   const completed = data.tasks.length - pending.length;
+  const completionPercent = data.tasks.length ? Math.round(completed / data.tasks.length * 100) : 0;
+  const now = new Date();
+  const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const overdue = pending.filter(t => t.due && t.due < todayKey).length;
   const upcoming = [...pending].sort((a,b)=>(a.due || '9999').localeCompare(b.due || '9999')).slice(0,4);
   panel.innerHTML = `
     ${heading('YOUR CREATIVE COMMAND CENTER',`Welcome back, ${data.settings.displayName}! ✦`,'One beautiful place for the tools that power your day.')}
     <section class="hero"><div><span class="eyebrow" style="color:#c4a9ff">✦ &nbsp; LOKIVERSE · VERSION ${escapeHtml(info.version)}</span><h2>Your space to create <strong>more.</strong></h2><p>Organize ideas, stay on top of tasks, explore files, and keep an eye on your system. All in one private, offline-first workspace.</p><button class="button button-primary" data-goto="tasks">${icon('plus')} Create a task ${icon('arrow',16)}</button></div><div class="hero-icon">L</div></section>
-    <div class="stats-grid"><div class="stat-card"><span class="stat-card-label">Total Tasks</span><div class="stat-icon">${icon('tasks')}</div><div class="stat-card-number">${data.tasks.length}</div><div class="stat-card-bottom">Your action items</div></div><div class="stat-card"><span class="stat-card-label">Notes Created</span><div class="stat-icon">${icon('notes')}</div><div class="stat-card-number">${data.notes.length}</div><div class="stat-card-bottom">Ideas saved locally</div></div><div class="stat-card"><span class="stat-card-label">Tasks Finished</span><div class="stat-icon">${icon('check')}</div><div class="stat-card-number">${completed}</div><div class="stat-card-bottom">Keep the momentum going</div></div><div class="stat-card"><span class="stat-card-label">Apps Connected</span><div class="stat-icon">${icon('sparkles')}</div><div class="stat-card-number">4<span style="font-size:14px;color:#9390ae"> / 5</span></div><div class="stat-card-bottom">LokiShare planned</div></div></div>
+    <div class="stats-grid"><div class="stat-card"><span class="stat-card-label">Total Tasks</span><div class="stat-icon">${icon('tasks')}</div><div class="stat-card-number">${data.tasks.length}</div><div class="stat-card-bottom">Your action items</div></div><div class="stat-card"><span class="stat-card-label">Notes Created</span><div class="stat-icon">${icon('notes')}</div><div class="stat-card-number">${data.notes.length}</div><div class="stat-card-bottom">Ideas saved locally</div></div><div class="stat-card"><span class="stat-card-label">Tasks Finished</span><div class="stat-icon">${icon('check')}</div><div class="stat-card-number">${completed}</div><div class="stat-card-bottom">Keep the momentum going</div></div><div class="stat-card"><span class="stat-card-label">Workspace Modules</span><div class="stat-icon">${icon('sparkles')}</div><div class="stat-card-number">4<span style="font-size:14px;color:#9390ae"> / 5</span></div><div class="stat-card-bottom">LokiShare coming later</div></div></div>
+    <section class="progress-summary" aria-label="Task progress"><div class="progress-summary-copy"><span class="eyebrow">TODAY AT A GLANCE</span><h3>${completionPercent}% of tasks completed</h3><p>${pending.length} active · ${completed} finished · ${overdue} overdue</p></div><div class="progress-summary-track"><span style="width:${completionPercent}%"></span></div><button class="button button-ghost" data-goto="tasks">Manage tasks ${icon('arrow',15)}</button></section>
     <div class="two-col"><div><div class="section-header"><h3>Upcoming tasks</h3><button data-goto="tasks">View all →</button></div><div class="panel">${upcoming.length ? upcoming.map(t=>`<div class="mini-task"><input type="checkbox" class="checkbox" data-complete="${escapeHtml(t.id)}" aria-label="Mark completed"><div style="min-width:0;flex:1"><div class="mini-task-title">${escapeHtml(t.title)}</div><div class="mini-task-sub">${niceDate(t.due)}</div></div><span class="task-tag ${t.priority.toLowerCase()}">${escapeHtml(t.priority)}</span></div>`).join('') : emptyState('tasks','No pending tasks — you are all caught up!')}</div></div><div><div class="section-header"><h3>Quick launch</h3><button data-goto="settings">Customize →</button></div><div class="panel"><button class="quick-link" data-goto="notes"><span class="quick-icon">${icon('notes')}</span><span><strong>LokiNotes</strong><small>Capture your next big idea</small></span><span class="arrow">→</span></button><button class="quick-link" data-goto="files"><span class="quick-icon">${icon('folder')}</span><span><strong>LokiFiles</strong><small>Browse local files and folders</small></span><span class="arrow">→</span></button><button class="quick-link" data-goto="monitor"><span class="quick-icon">${icon('activity')}</span><span><strong>SystemPulse</strong><small>Live CPU and memory insights</small></span><span class="arrow">→</span></button></div></div></div>`;
   panel.querySelectorAll('[data-complete]').forEach(box=>box.addEventListener('change',()=>toggleTask(box.dataset.complete)));
   bindGoto();
@@ -122,8 +159,8 @@ function renderNotes() {
   const filtered=[...data.notes].filter(n=>(n.title+' '+n.body).toLowerCase().includes(noteQuery.toLowerCase())).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
   panel.innerHTML = `${heading('YOUR IDEAS, SAFE AND SOUND','LokiNotes','A quiet place for thoughts, projects, and everything in between.',`<button class="button button-primary" id="newNote">${icon('plus')} New Note</button>`)}
     <div class="note-layout"><section class="panel note-sidebar"><input class="field search" id="noteSearch" type="search" placeholder="Search notes..." value="${escapeHtml(noteQuery)}"><div id="noteList">${filtered.length ? filtered.map(n=>`<button class="note-item ${n.id===selectedNoteId?'selected':''}" data-note="${escapeHtml(n.id)}"><strong>${escapeHtml(n.title||'Untitled note')}</strong><small>${escapeHtml((n.body||'').replace(/\s+/g,' ').slice(0,45)||'Empty note')} · ${compactTime(n.updatedAt)}</small></button>`).join('') : emptyState('notes','No notes found')}</div></section>
-    <section class="panel note-editor">${selected ? `<input id="noteTitle" maxlength="140" placeholder="Untitled note" value="${escapeHtml(selected.title)}"><textarea id="noteBody" maxlength="100000" placeholder="Let your ideas flow..."></textarea><div class="editor-bottom"><span id="noteStatus">All changes saved locally</span><button id="deleteNote" class="button button-danger">${icon('trash')} Delete Note</button></div>` : `<div class="empty" style="margin:auto">${icon('notes',32)}<strong>Your thoughts, your universe.</strong><p>Create a note or select one from the list.</p></div>`}</section></div>`;
-  if (selected) q('#noteBody').value=selected.body;
+    <section class="panel note-editor">${selected ? `<input id="noteTitle" maxlength="140" placeholder="Untitled note" value="${escapeHtml(selected.title)}"><textarea id="noteBody" maxlength="100000" placeholder="Let your ideas flow..."></textarea><div class="editor-bottom"><span><span id="noteStatus">All changes saved locally</span> <span id="noteCount" class="word-count"></span></span><button id="deleteNote" class="button button-danger">${icon('trash')} Delete Note</button></div>` : `<div class="empty" style="margin:auto">${icon('notes',32)}<strong>Your thoughts, your universe.</strong><p>Create a note or select one from the list.</p></div>`}</section></div>`;
+  if (selected) { q('#noteBody').value=selected.body; updateNoteCount(); }
   q('#newNote').addEventListener('click',()=>{
     const note={id:id(),title:'Untitled note',body:'',updatedAt:new Date().toISOString()};data.notes.push(note);selectedNoteId=note.id;noteQuery='';persist();renderNotes();q('#noteTitle').focus();q('#noteTitle').select();
   });
@@ -133,14 +170,17 @@ function renderNotes() {
     const onEdit=()=>{
       selected.title=q('#noteTitle').value;selected.body=q('#noteBody').value;selected.updatedAt=new Date().toISOString();
       q('#noteStatus').textContent='Saving changes...';
+      setSaveStatus('saving', '● Saving…');
+      updateNoteCount();
       if(noteSaveTimer)clearTimeout(noteSaveTimer);
-      noteSaveTimer=setTimeout(async()=>{noteSaveTimer=null;try{await persist();const status=q('#noteStatus');if(status)status.textContent='Saved locally ✓';updateNoteList();}catch(error){fail(error);}},420);
+      noteSaveTimer=setTimeout(async()=>{noteSaveTimer=null;try{await persist();const status=q('#noteStatus');if(status)status.textContent='Saved locally ✓';updateNoteList();}catch(error){fail(error);}},230);
     };
     q('#noteTitle').addEventListener('input',onEdit);q('#noteBody').addEventListener('input',onEdit);
     q('#deleteNote').addEventListener('click',()=>{if(!confirm('Delete this note?'))return;data.notes=data.notes.filter(n=>n.id!==selected.id);selectedNoteId=data.notes[0]?.id||null;persist();renderNotes();});
   }
 }
-function selectNote(noteId) { if(noteSaveTimer){clearTimeout(noteSaveTimer);noteSaveTimer=null;persist();}selectedNoteId=noteId;renderNotes(); }
+function selectNote(noteId) { flushNoteEdits(); selectedNoteId=noteId;renderNotes(); }
+function updateNoteCount() { const target=q('#noteCount'), body=q('#noteBody'); if(target&&body) {const words=body.value.trim()?body.value.trim().split(/\s+/).length:0;target.textContent=` · ${words} words`; } }
 function updateNoteList() {
   const filtered=[...data.notes].filter(n=>(n.title+' '+n.body).toLowerCase().includes(noteQuery.toLowerCase())).sort((a,b)=>(b.updatedAt||'').localeCompare(a.updatedAt||''));
   const list=q('#noteList');if(!list)return;
@@ -195,19 +235,21 @@ async function refreshStats(){
 }
 function renderShare(){
   panel.innerHTML=`${heading('THE NEXT CONNECTION','LokiShare','Our upcoming direct Wi-Fi file sharing module.')}
-    <div class="center-card"><div class="giant-icon">${icon('share')}</div><span class="eyebrow">COMING IN A FUTURE RELEASE</span><h2>Share files. Not your privacy.</h2><p>We are planning direct Android ↔ Windows file transfer over the same local network, without cloud accounts. This feature is <strong>not yet implemented</strong> in v0.1.0.</p></div>
+    <div class="center-card"><div class="giant-icon">${icon('share')}</div><span class="eyebrow">COMING IN A FUTURE RELEASE</span><h2>Share files. Not your privacy.</h2><p>We are planning direct Android ↔ Windows file transfer over the same local network, without cloud accounts. This feature is <strong>not yet implemented</strong> in v0.1.1.</p></div>
     <div class="roadmap"><div class="roadmap-card"><div class="roadmap-icon">${icon('shield')}</div><h3>Secure pairing</h3><p>Pair devices with a one-time code or QR scan before transferring files.</p></div><div class="roadmap-card"><div class="roadmap-icon">${icon('share')}</div><h3>Direct transfers</h3><p>Send files over local Wi-Fi, even when the internet is disconnected.</p></div><div class="roadmap-card"><div class="roadmap-icon">${icon('activity')}</div><h3>Live progress</h3><p>Track the status of incoming and outgoing transfers in real time.</p></div></div>`;
 }
 function renderSettings(){
   panel.innerHTML=`${heading('MAKE IT YOURS','Settings','Manage your workspace, local backups, and app updates.')}
     <section class="panel setting-card"><div class="setting-line"><div><h3>Display name</h3><p>Make your workspace feel like your own.</p></div></div><form id="nameForm" class="settings-form"><input id="displayName" class="field flex-field" maxlength="50" value="${escapeHtml(data.settings.displayName)}" required><button class="button button-primary" type="submit">Save Name</button></form></section>
+    <section class="panel setting-card"><div class="setting-line"><div><h3>Accent color</h3><p>Personalize LokiVerse without changing your local data.</p></div></div><div class="accent-options" role="group" aria-label="Accent color"><button class="accent-option ${data.settings.accent==='purple'?'selected':''}" data-accent="purple"><span class="accent-dot purple-dot"></span> Aurora purple</button><button class="accent-option ${data.settings.accent==='cyan'?'selected':''}" data-accent="cyan"><span class="accent-dot cyan-dot"></span> Arctic cyan</button><button class="accent-option ${data.settings.accent==='sunset'?'selected':''}" data-accent="sunset"><span class="accent-dot sunset-dot"></span> Sunset rose</button></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Local backups</h3><p>Tasks and notes are saved on this PC. Export a JSON backup or restore an earlier backup.</p></div><div style="display:flex;gap:9px"><button class="button" id="exportBackup">${icon('download')} Export</button><button class="button button-ghost" id="importBackup">${icon('upload')} Restore</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Version & updates</h3><p>Installed version: <strong>v${escapeHtml(info.version)}</strong>. New Windows installers update over the existing installation. GitHub Releases are publicly available without an app signing secret.</p><p id="updateMessage" class="fine-print"></p></div><div style="display:flex;gap:9px"><button class="button" id="checkUpdate">${icon('refresh')} Check Updates</button><button class="button button-ghost" id="releasePage">${icon('external')} Releases</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Your storage</h3><p>Saved data folder: <strong>${escapeHtml(info.dataDirectory||'Local app data')}</strong></p><p>Files and notes stay on your computer unless you export or share them.</p></div><button class="button button-ghost" id="openDataFolder">${icon('folder')} Open Folder</button></div></section>
-    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.1.0.</div>`;
+    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.1.1.</div>`;
   q('#nameForm').addEventListener('submit',e=>{e.preventDefault();data.settings.displayName=q('#displayName').value.trim().slice(0,50)||'Creator';persist(true);renderSettings();});
+  panel.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>{data.settings.accent=btn.dataset.accent;applyAccent();persist(true);renderSettings();}));
   q('#exportBackup').addEventListener('click',async()=>{try{const result=await window.loki.exportBackup();if(!result.canceled)toast('Backup exported successfully.')}catch(e){fail(e)}});
-  q('#importBackup').addEventListener('click',async()=>{try{const result=await window.loki.importBackup();if(!result.canceled){data=result.data;selectedNoteId=null;toast('Workspace restored.');renderSettings();}}catch(e){fail(e)}});
+  q('#importBackup').addEventListener('click',async()=>{try{await flushNoteEdits();const result=await window.loki.importBackup();if(!result.canceled){data=result.data;selectedNoteId=null;applyAccent();setSaveStatus('saved','✓ Saved locally');toast('Workspace restored.');renderSettings();}}catch(e){fail(e)}});
   q('#checkUpdate').addEventListener('click',checkUpdate);
   q('#releasePage').addEventListener('click',()=>window.loki.openReleases().catch(fail));
   q('#openDataFolder').addEventListener('click',()=>window.loki.openDataFolder().catch(fail));
@@ -225,14 +267,67 @@ async function checkUpdate(){
   }catch(error){if(status)status.textContent='Update check failed. You can try again later.';fail(error)}
   finally{if(btn)btn.disabled=false;}
 }
+function openPalette() {
+  paletteVisible = true;
+  paletteQuery = '';
+  paletteIndex = 0;
+  q('#commandPalette').hidden = false;
+  q('#paletteInput').value = '';
+  renderPaletteResults();
+  q('#paletteInput').focus();
+}
+function closePalette() { paletteVisible=false; q('#commandPalette').hidden=true; }
+function paletteAction(item) {
+  closePalette();
+  if (item.view) switchView(item.view);
+  if (item.noteId) { selectedNoteId=item.noteId; noteQuery=''; switchView('notes'); }
+  if (item.taskId) switchView('tasks');
+}
+function renderPaletteResults() {
+  const query = paletteQuery.trim().toLowerCase();
+  const matches = (s) => s.toLowerCase().includes(query);
+  paletteItems = [
+    ...Object.entries(pages).filter(([key])=>key!=='share').map(([view,title])=>({label:title,kind:'Module',view,icon:view==='home'?'home':view==='monitor'?'activity':view==='files'?'folder':view==='tasks'?'tasks':view==='notes'?'notes':'settings'})),
+    ...data.notes.map(note=>({label:note.title||'Untitled note',kind:'Note',noteId:note.id,icon:'notes'})),
+    ...data.tasks.map(task=>({label:task.title,kind:task.completed?'Completed task':'Task',taskId:task.id,icon:'tasks'}))
+  ].filter(item=>matches(item.label)||matches(item.kind)).slice(0,12);
+  const results=q('#paletteResults');
+  results.innerHTML = paletteItems.length ? paletteItems.map((item,index)=>`<button class="palette-result ${paletteIndex===index?'selected':''}" data-palette-index="${index}" role="option" aria-selected="${paletteIndex===index}"><span class="palette-result-icon">${icon(item.icon,17)}</span><span>${escapeHtml(item.label)}</span><small>${escapeHtml(item.kind)}</small>${icon('arrow',14)}</button>`).join('') : '<div class="palette-empty">No matching modules, notes, or tasks.</div>';
+  results.querySelectorAll('[data-palette-index]').forEach(btn=>btn.addEventListener('click',()=>paletteAction(paletteItems[Number(btn.dataset.paletteIndex)])));
+}
+function handlePaletteKey(event) {
+  if(event.key==='Escape') { event.preventDefault();closePalette();return; }
+  if(event.key==='ArrowDown' || event.key==='ArrowUp') {
+    event.preventDefault();
+    if(!paletteItems.length)return;
+    paletteIndex=(paletteIndex+(event.key==='ArrowDown'?1:-1)+paletteItems.length)%paletteItems.length;
+    renderPaletteResults();
+  }
+  if(event.key==='Enter' && paletteItems[paletteIndex]) {event.preventDefault();paletteAction(paletteItems[paletteIndex]);}
+}
+function handleShortcuts(event) {
+  if((event.ctrlKey||event.metaKey) && event.key.toLowerCase()==='k') { event.preventDefault();paletteVisible?closePalette():openPalette(); }
+  else if(event.key==='Escape' && paletteVisible) {event.preventDefault();closePalette();}
+}
 async function main(){
   renderNavIcons();
   q('#dateLabel').textContent=new Date().toLocaleDateString('en-US',{weekday:'short',month:'short',day:'numeric',year:'numeric'});
   document.querySelectorAll('.nav-button').forEach(b=>b.addEventListener('click',()=>switchView(b.dataset.view)));
   q('#topUpdate').addEventListener('click',checkUpdate);
+  q('#openPalette').addEventListener('click', openPalette);
+  q('#paletteClose').addEventListener('click',closePalette);
+  q('#paletteBackdrop').addEventListener('click',closePalette);
+  q('#paletteInput').addEventListener('input',event=>{paletteQuery=event.target.value;paletteIndex=0;renderPaletteResults();});
+  q('#paletteInput').addEventListener('keydown',handlePaletteKey);
+  document.addEventListener('keydown', handleShortcuts);
+  window.loki.onCloseRequest(async()=>{try{await flushNoteEdits();await window.loki.completeClose(true);}catch(error){fail(error);window.loki.completeClose(false).catch(fail);}});
   try{
     const loaded=await Promise.all([window.loki.load(),window.loki.info()]);data=loaded[0];info=loaded[1];
     q('#sidebarVersion').textContent=`v${info.version}`;
+    applyAccent();
+    setSaveStatus('saved', '✓ Saved locally');
+    const recovery = await window.loki.getRecoveryStatus();
+    if (recovery) toast(recovery, true);
     selectedNoteId=data.notes[0]?.id||null;
     render();
   }catch(error){
