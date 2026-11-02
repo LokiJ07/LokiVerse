@@ -33,6 +33,12 @@
 
 No internet connection is needed for *local transfers*. Initial APK installation/dependency downloads can require internet. No public Wi-Fi, cross-network relay, cloud sync, automatic discovery or end-to-end cryptography independent of the PC is claimed: transfers are encrypted **between the Android client and Windows host** using HTTPS with certificate pinning.
 
+## Android SDK CI hotfix (November 2, 2026)
+
+The Android workflow previously called `android-actions/setup-android@v3`, whose default SDK package list could request the removed legacy `tools` package. This caused `Failed to find package 'tools'` / exit 1 **before Gradle compiled the app**. The two workflows now call `android-actions/setup-android@v4` with `packages: 'platform-tools'`, then explicitly install `platforms;android-35` and `build-tools;35.0.0` using `sdkmanager --install`. The workflow also checks that the SDK platform jar and build-tools directory exist before running Gradle.
+
+The app, version `0.4.0`, and signing configuration are unchanged. **This patch has not been verified on GitHub's runners yet**; push to `main` and inspect the Android CI job before tagging. If `v0.4.0` was already tagged, do not move that tag: create a new patch version/tag instead.
+
 ## Developer commands
 
 From the **Windows project root**:

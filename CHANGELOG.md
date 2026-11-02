@@ -6,6 +6,7 @@
 - Native Android companion project under `android-companion`, with QR pairing, SHA-256 certificate pinning, explicit PC approval, file sending and scoped downloads.
 - Secure HttpOnly SameSite=Strict session cookies, refreshed device revocation, existing origin checks and file-boundary protections.
 - Additional TLS persistence and signature-verification regression test.
+- Android CI hotfix: use `android-actions/setup-android@v4` and install API 35/build-tools explicitly (legacy `tools` no longer available). Applied to both CI and tag release workflows.
 - GitHub Actions two-platform CI and release: Windows NSIS installer and clearly marked **TEST ONLY** Android debug APK (Android debug signing differs per runner).
 - Existing LokiVerse data and Windows installer identities remain unchanged.
 

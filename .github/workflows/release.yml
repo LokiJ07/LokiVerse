@@ -47,12 +47,20 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
-      - uses: android-actions/setup-android@v3
+      # v3's default SDK package list may include the removed legacy `tools` package.
+      # v4 installs only the current SDK packages (explicitly excluding `tools`).
+      - uses: android-actions/setup-android@v4
+        with:
+          packages: 'platform-tools'
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.11.1'
-      - name: Install Android SDK 35
-        run: sdkmanager 'platforms;android-35' 'build-tools;35.0.0'
+      - name: Install Android 35 platform and build tools
+        shell: bash
+        run: |
+          sdkmanager --install "platforms;android-35" "build-tools;35.0.0"
+          test -f "$ANDROID_SDK_ROOT/platforms/android-35/android.jar"
+          test -d "$ANDROID_SDK_ROOT/build-tools/35.0.0"
       - name: Build Android test APK
         working-directory: android-companion
         run: gradle --no-daemon :app:assembleDebug
