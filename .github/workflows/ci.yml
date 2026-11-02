@@ -1,0 +1,30 @@
+name: LokiVerse Windows CI
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify-and-build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      - name: Run validation tests
+        run: npm run check
+      - name: Build Windows installer
+        run: npm run dist:win
+      - name: Upload installer as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: LokiVerse-Windows-CI
+          path: release/*.exe
+          if-no-files-found: error
+          retention-days: 7

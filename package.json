@@ -1,0 +1,45 @@
+{
+  "name": "lokiverse",
+  "productName": "LokiVerse",
+  "version": "0.1.0",
+  "description": "LokiVerse — an offline-first desktop workspace by LokiJ.",
+  "author": "LokiJ",
+  "license": "MIT",
+  "private": true,
+  "main": "src/main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "test": "node --test tests/*.test.cjs",
+    "check": "node --check src/main.cjs && node --check src/preload.cjs && node --check src/renderer/app.js && node --check src/shared/logic.cjs && npm test",
+    "dist:win": "electron-builder --win nsis --x64 --publish never",
+    "pack:win": "electron-builder --win dir --x64 --publish never"
+  },
+  "devDependencies": {
+    "electron": "45.2.1",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.lokij.lokiverse",
+    "productName": "LokiVerse",
+    "copyright": "Copyright © 2026 LokiJ",
+    "asar": true,
+    "directories": { "output": "release" },
+    "files": ["src/**/*", "assets/**/*", "package.json"],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": ["nsis"],
+      "verifyUpdateCodeSignature": false,
+      "artifactName": "LokiVerse-${version}-Setup-${arch}.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    }
+  }
+}
