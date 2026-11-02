@@ -17,5 +17,17 @@ contextBridge.exposeInMainWorld('loki', Object.freeze({
   createFolder: (relative, name) => invoke('files:createFolder', relative, name),
   renameFile: (relative, name) => invoke('files:rename', relative, name),
   stats: () => invoke('system:stats'),
+  shareInterfaces: () => invoke('share:interfaces'),
+  shareStatus: () => invoke('share:status'),
+  shareStart: address => invoke('share:start', address),
+  shareStop: () => invoke('share:stop'),
+  shareApprove: (id, accepted) => invoke('share:approve', id, accepted),
+  shareRevoke: id => invoke('share:revoke', id),
+  shareChooseInbox: () => invoke('share:chooseInbox'),
+  shareDisableInbox: () => invoke('share:disableInbox'),
+  shareAddFiles: () => invoke('share:addFiles'),
+  shareRemoveFile: id => invoke('share:removeFile', id),
+  shareQRCode: () => invoke('share:qr'),
+  onShareChanged: callback => { ipcRenderer.on('share:changed', callback); },
   checkUpdate: () => invoke('app:checkUpdate'), openReleases: () => invoke('app:openReleases')
 }));

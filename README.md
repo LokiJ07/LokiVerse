@@ -4,33 +4,44 @@
 
 **Your universe. Your tools. Your rules.**
 
-Windows desktop creator workspace · Offline-first · Open-source · Midnight Aurora design
+Windows 10/11 desktop workspace • Offline-first • Free and open-source
 
-![LokiVerse logo](assets/icon.png)
+![LokiVerse icon](assets/icon.png)
 
 [![Windows CI](https://github.com/LokiJ07/LokiVerse/actions/workflows/ci.yml/badge.svg)](https://github.com/LokiJ07/LokiVerse/actions/workflows/ci.yml)
 
 </div>
 
-## ✨ LokiVerse v0.1.1 — UI & Stability Update
+## 💜 v0.3.0 — LokiShare (first working version)
 
-LokiVerse is a real Windows desktop app, not a hosted website. All your notes and tasks are stored locally on your computer.
+**NEW: send files between your Windows PC and an Android phone using the same private Wi-Fi network, without cloud storage.** The phone opens a responsive local web interface in Chrome; **there is no separate Android APK in v0.3.0**.
 
-| Module | Included today? | Features |
-| --- | --- | --- |
-| Overview | ✅ | At-a-glance metrics, task progress, pending tasks, quick launch |
-| My Tasks | ✅ | Add, prioritize, set deadlines, complete, delete |
-| LokiNotes | ✅ | Create, edit, search, delete, automatic local saving, word count |
-| LokiFiles | ✅ | Choose a folder, browse, open files, reveal in Explorer. **Read-only** |
-| SystemPulse | ✅ | CPU utilization estimate, RAM usage, device details |
-| Settings | ✅ | Display name, theme accent, export/restore backup, check GitHub Releases |
-| LokiShare | 🚧 Planned | Android↔Windows transfer; **not implemented** yet |
+| Module | What works |
+|---|---|
+| Overview | Dashboard, task summary, shortcuts |
+| My Tasks | Categories, deadlines, priorities, local reminders while the app runs |
+| LokiNotes | Markdown preview, folders, pinned notes, autosave |
+| LokiFiles | Browse chosen folders, scoped search, duplicates, create and rename |
+| SystemPulse | CPU/RAM graphs and disk information |
+| **LokiShare** | Temporary LAN host, browser pairing, PC approval, 6-digit matching, QR/link, phone↔PC file transfer, live progress, file scope and disconnect |
+| Settings | Themes, backup/restore, GitHub Release checker |
 
-> v0.1.1 builds on the tested v0.1.0 design. Source-level tests and browser UI smoke tests passed in the development environment; Windows upgrade validation is still required.
+### How LokiShare works
 
-## 📦 Setup on Windows
+1. Windows: Open LokiVerse → **LokiShare**. Choose the Wi-Fi or Ethernet IPv4 address (e.g. `192.168.1.5`) and click **Start sharing**. The phone and Windows computer must be on the same **private** LAN. If Windows Firewall asks, permit **Private networks only**.
+2. Windows: To receive files, click **Choose receive folder**. To send files, click **Add files to share**. Only selected files can be downloaded; phone uploads go only into the chosen receive folder.
+3. Android: Use the camera to scan the QR, **or** enter the displayed `http://...` address in Chrome and type the **10-character connection code** shown on Windows. The QR embeds a random one-session invite token.
+4. Android: Tap **Request pairing** and look at the **6-digit verification number**. Windows: approve **only if the number matches**.
+5. Android: **Choose files to send → Send**, or use **Save** beside the files explicitly shared by Windows. Transfers stay local; internet is not necessary.
+6. Windows: View **Live activity**, disconnect devices individually or click **Stop sharing** to immediately terminate the session. Your workspace tasks and notes are never shared through this feature.
 
-Required: Node.js 22+, Git, and an internet connection for npm (only to install development dependencies).
+**Important security limitation:** v0.3.0 uses plain **HTTP** over the local Wi-Fi network. Pairing approval, random session credentials, input validation, and file selection restrict access, **but file contents are NOT encrypted in transit**. Use on **trusted private Wi-Fi only**; do not use shared/public/hotel Wi-Fi or send confidential files. A future release may add end-to-end encrypted transfers. Devices on different guest networks, client-isolated Wi-Fi, VPNs or blocked Windows Firewall settings may not connect.
+
+**Limits:** 512 MiB per file. Browser uploads use file selection (no access to arbitrary Android directories). Downloads are limited to files explicitly selected by the Windows user. An incoming filename is validated and renamed if needed to avoid overwriting another file. Paired-device sessions expire after inactivity, and a Stop immediately revokes them. No cloud account, telemetry, or remote relay.
+
+## 📦 Run locally
+
+Requirements for development: Node.js 22+, internet for the initial `npm install` of Electron / QR code dependencies. Internet is **not required for local file sharing** after setup.
 
 ```bash
 npm install
@@ -38,117 +49,62 @@ npm run check
 npm start
 ```
 
-Build the Windows installer **locally on Windows**:
+Build an installer on Windows:
 
 ```bash
 npm run dist:win
 ```
 
-The resulting `.exe` should be under `release/`.
+## 🤖 Upgrade an existing LokiVerse repository and installation
 
-## 🤖 GitHub Actions — build & release (no custom secrets)
+**Do not run `git init` or create a new GitHub repository.** If you currently have v0.2.1 installed:
 
-> The following section describes creating a brand-new repository only. Existing v0.1.0 users should follow the **upgrade instructions above** instead.
-
-1. **Create a public empty GitHub repository named `LokiVerse`** under the **`LokiJ07`** account. Do not initialize the remote with README or license (both are included here).
-2. Open Git Bash or VS Code terminal in the **LokiVerse** project folder.
-3. Run:
+1. Export your workspace backup from LokiVerse → Settings → Export.
+2. Extract `LokiVerse-v0.3.0-Source.zip`. Copy **all files and folders**, including `.github` and the new `src/share-web`, into your existing local `LokiVerse` Git repository. Keep `.git` untouched.
+3. Open Git Bash inside the existing repository:
 
 ```bash
-git init
-git add .
-git commit -m "feat: LokiVerse Creator Edition v0.1.0"
-git branch -M main
-git remote add origin https://github.com/LokiJ07/LokiVerse.git
-git push -u origin main
-```
-
-4. Go to **Actions → LokiVerse Windows CI**. Pushes to `main` will run tests, build the Windows installer, and upload a 7-day workflow artifact.
-5. To **publish an official public release**, use:
-
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-6. Go to **Actions → LokiVerse GitHub Release**. When it succeeds, see **Releases** in the repository. Download `LokiVerse-0.1.0-Setup-x64.exe` from that release.
-
-The release workflow uses GitHub's **automatic `GITHUB_TOKEN`**, not a manually configured GitHub repository secret. Under repo **Settings → Actions → General**, make sure Actions are enabled. The release workflow explicitly requests `contents: write`.
-
-**If your GitHub username or repository name differs**, update `RELEASE_REPOSITORY` in `src/main.cjs`, the repository links in this file, and your git remote **before publishing v0.1.0**, otherwise the app's update checker will look at the wrong repo.
-
-## 🔥 Upgrade your existing v0.1.0 installation to v0.1.1
-
-**You already have a Git repository and v0.1.0 installed. Do NOT initialize a new repository.**
-
-1. **Before upgrading**, in LokiVerse v0.1.1 go to Settings → Export, and keep an external JSON backup.
-2. Extract the v0.1.1 source ZIP. Copy the **contents** of its `LokiVerse-v0.1.1` directory into your current local `LokiVerse` Git repository folder, replacing files when asked. Do not overwrite/delete your `.git` folder.
-3. In Git Bash, opened in the existing repository:
-
-```bash
-npm run check   # if dependencies are already installed; otherwise npm install first
+npm install
+npm run check
 git add -A
-git commit -m "feat: LokiVerse v0.1.1 UI and stability"
+git commit -m "feat: LokiVerse v0.3.0 LokiShare local transfer"
 git push origin main
 ```
 
-4. Check GitHub Actions → LokiVerse Windows CI. When green, publish the new version:
+4. Wait until **LokiVerse Windows CI** succeeds in GitHub Actions.
+5. **Only after a green CI run**, create the new tag:
 
 ```bash
-git tag v0.1.1
-git push origin v0.1.1
+git tag v0.3.0
+git push origin v0.3.0
 ```
 
-5. Check GitHub Releases → v0.1.1 and download `LokiVerse-0.1.1-Setup-x64.exe`.
-6. **Close v0.1.0 and run the new installer over it. Do not manually uninstall v0.1.0.** Launch LokiVerse and verify that your tasks and notes survived, that Settings says `v0.1.1`, and that Ctrl+K works.
+6. Wait until **LokiVerse GitHub Release** succeeds and download **`LokiVerse-0.3.0-Setup-x64.exe`** from the release assets.
+7. Close the existing LokiVerse app. **Run the installer over your existing version; do not manually uninstall it.** Confirm the version, notes, tasks and settings are preserved.
 
-See [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASING.md](docs/RELEASING.md).
+The release workflow uses the repository-provided `GITHUB_TOKEN` and creates SHA256 checksums automatically. **No custom signing secret is required** for an unsigned NSIS release. Windows SmartScreen may warn about unsigned software. Check that the installer is from the official repository and verify its SHA256 checksum.
 
-## 🔁 Release new versions without uninstalling the old version
+### Why upgrades preserve data
 
-LokiVerse uses a per-user NSIS Windows installer. Upgrades rely on these **stable values**:
+The app retains `build.appId = com.lokij.lokiverse`, `productName = LokiVerse`, the same NSIS per-user install mode, and the same `app.getPath('userData')` storage. **Never change these identifiers between releases.** Local data compatibility and storage recovery tests remain in the test suite. As always, test your Windows installer before announcing it to other users.
 
-- `build.appId`: `com.lokij.lokiverse` — **never change** once released.
-- `productName`: `LokiVerse` — keep consistent.
-- Windows NSIS target and per-user install mode — keep consistent.
-- Electron user data location (typically `%APPDATA%\LokiVerse`) — keep consistent.
-- The `package.json` version must increase on each release.
+## 🧪 Tests
 
-**Example later upgrade to v0.2.0:**
+- `npm run check`: JavaScript syntax and Node test suite, including a real HTTP LAN pairing/upload/download simulation on loopback.
+- Browser interface smoke tests were conducted with mocked desktop/browser APIs; Windows compilation, firewall access, QR rendering with the packaged dependency, and Android hardware transfer require real-world verification.
+- No encrypted transport, automatic updates, automatic Android discovery, or native Android APK is claimed for v0.3.0.
 
-1. Make changes, then change `"version": "0.1.0"` to `"version": "0.2.0"` in `package.json`.
-2. Commit and push changes to `main`.
-3. Run `git tag v0.2.0` and `git push origin v0.2.0`.
-4. Download the new setup `.exe` from the corresponding GitHub Release.
-5. **Close LokiVerse and run the new installer. Do not manually uninstall the old version.** The existing installation should be upgraded while keeping your user data.
-6. Open LokiVerse → Settings → Version & updates, verify that it shows v0.2.0 and that existing notes/tasks remain.
+## 🛡️ Privacy & safety
 
-The built-in update checker fetches the latest **public** stable GitHub Release and helps you open the official release page. It **does not** silently download or install executables. For now, manually run the newest setup file. See [docs/RELEASING.md](docs/RELEASING.md) for the detailed checklist.
+- Notes, tasks and settings stay on the computer unless explicitly exported; LokiShare does **not** expose the workspace backup or arbitrary PC directories.
+- LokiShare is off by default and binds only to the selected local IPv4 interface when started.
+- The phone must present a one-session connection code/QR token and receive approval on the PC.
+- Uploaded files are bounded in size, filenames are restricted, and existing files are never overwritten.
+- The temporary HTTP service has no encryption. Do not share on networks you do not control. Stop sharing when finished.
+- The desktop UI uses Electron `contextIsolation`, sandboxed renderer and a narrow IPC bridge. JSON backups are plain text and should be protected separately.
 
-**Important:** This Windows NSIS workflow is different from Android APK signing. If an Android signing key was lost, Windows installer configuration cannot repair the Android signature mismatch. An unsigned Windows app may also show a **Windows SmartScreen / Unknown Publisher** warning. Do not bypass warnings on unexpected downloads; verify the release source and SHA256 hash.
+## Stack & licensing
 
-## 🔐 Privacy, permissions and safety
+Electron • Node.js • Vanilla HTML/CSS/JS • npm `qrcode` • Windows NSIS • GitHub Actions / Releases
 
-- LokiVerse v0.1.1 does not transmit task or note contents to any server.
-- GitHub API access occurs only after you ask to check for updates.
-- LokiFiles shows files only within a folder selected by the user; it does not delete, move, or rewrite them. Symbolic links pointing outside the selected root are blocked.
-- UI content is escaped to avoid HTML injection, and `contextIsolation`, `sandbox`, and a narrow preload bridge are enabled.
-- JSON backups are human-readable files, not encrypted. Keep exports in a safe location.
-- App data is not deleted during normal version upgrades. Nevertheless, always export a backup before testing a new release.
-
-## 🧱 Tech stack
-
-Electron 45 · Node.js · Vanilla JavaScript · CSS · Windows NSIS · GitHub Actions · GitHub Releases
-
-## 🛠️ Developer scripts
-
-| Command | Action |
-| --- | --- |
-| `npm start` | Run the desktop app |
-| `npm run check` | Validate JS syntax and run automated unit tests |
-| `npm run dist:win` | Build a Windows `.exe` installer (on Windows) |
-| `npm run pack:win` | Build unpacked app directory (on Windows) |
-
-## 📄 License
-
-MIT License · © 2026 LokiJ
+MIT License © 2026 LokiJ

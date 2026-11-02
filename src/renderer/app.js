@@ -48,6 +48,9 @@ let system = null;
 let cpuHistory = [];
 let ramHistory = [];
 let monitorTimer = null;
+let shareTimer = null;
+let shareQRURL = null;
+let shareStatusVersion = -1;
 let saveChain = Promise.resolve();
 let noteSaveTimer = null;
 let saveRevision = 0;
@@ -111,6 +114,7 @@ function switchView(view) {
   if (!pages[view]) return;
   flushNoteEdits();
   if (monitorTimer) { clearInterval(monitorTimer); monitorTimer = null; }
+  if (shareTimer) { clearInterval(shareTimer); shareTimer = null; }
   currentView = view;
   q('#topTitle').textContent = pages[view];
   document.querySelectorAll('.nav-button').forEach(b => b.classList.toggle('active',b.dataset.view===view));
@@ -143,7 +147,7 @@ function renderHome() {
   panel.innerHTML = `
     ${heading('YOUR CREATIVE COMMAND CENTER',`Welcome back, ${data.settings.displayName}! ✦`,'One beautiful place for the tools that power your day.')}
     <section class="hero"><div><span class="eyebrow" style="color:#c4a9ff">✦ &nbsp; LOKIVERSE · VERSION ${escapeHtml(info.version)}</span><h2>Your space to create <strong>more.</strong></h2><p>Organize ideas, stay on top of tasks, explore files, and keep an eye on your system. All in one private, offline-first workspace.</p><button class="button button-primary" data-goto="tasks">${icon('plus')} Create a task ${icon('arrow',16)}</button></div><div class="hero-icon">L</div></section>
-    <div class="stats-grid"><div class="stat-card"><span class="stat-card-label">Total Tasks</span><div class="stat-icon">${icon('tasks')}</div><div class="stat-card-number">${data.tasks.length}</div><div class="stat-card-bottom">${data.tasks.filter(t=>t.category!=="General").length} organized by category</div></div><div class="stat-card"><span class="stat-card-label">Notes Created</span><div class="stat-icon">${icon('notes')}</div><div class="stat-card-number">${data.notes.length}</div><div class="stat-card-bottom">${data.notes.filter(n=>n.pinned).length} pinned ideas</div></div><div class="stat-card"><span class="stat-card-label">Tasks Finished</span><div class="stat-icon">${icon('check')}</div><div class="stat-card-number">${completed}</div><div class="stat-card-bottom">Keep the momentum going</div></div><div class="stat-card"><span class="stat-card-label">Workspace Modules</span><div class="stat-icon">${icon('sparkles')}</div><div class="stat-card-number">4<span style="font-size:14px;color:#9390ae"> / 5</span></div><div class="stat-card-bottom">LokiShare remains on roadmap</div></div></div>
+    <div class="stats-grid"><div class="stat-card"><span class="stat-card-label">Total Tasks</span><div class="stat-icon">${icon('tasks')}</div><div class="stat-card-number">${data.tasks.length}</div><div class="stat-card-bottom">${data.tasks.filter(t=>t.category!=="General").length} organized by category</div></div><div class="stat-card"><span class="stat-card-label">Notes Created</span><div class="stat-icon">${icon('notes')}</div><div class="stat-card-number">${data.notes.length}</div><div class="stat-card-bottom">${data.notes.filter(n=>n.pinned).length} pinned ideas</div></div><div class="stat-card"><span class="stat-card-label">Tasks Finished</span><div class="stat-icon">${icon('check')}</div><div class="stat-card-number">${completed}</div><div class="stat-card-bottom">Keep the momentum going</div></div><div class="stat-card"><span class="stat-card-label">Workspace Modules</span><div class="stat-icon">${icon('sparkles')}</div><div class="stat-card-number">5<span style="font-size:14px;color:#9390ae"> / 5</span></div><div class="stat-card-bottom">Now includes LokiShare</div></div></div>
     <section class="progress-summary" aria-label="Task progress"><div class="progress-summary-copy"><span class="eyebrow">TODAY AT A GLANCE</span><h3>${completionPercent}% of tasks completed</h3><p>${pending.length} active · ${completed} finished · ${overdue} overdue</p></div><div class="progress-summary-track"><span style="width:${completionPercent}%"></span></div><button class="button button-ghost" data-goto="tasks">Manage tasks ${icon('arrow',15)}</button></section>
     <div class="two-col"><div><div class="section-header"><h3>Upcoming tasks</h3><button data-goto="tasks">View all →</button></div><div class="panel">${upcoming.length ? upcoming.map(t=>`<div class="mini-task"><input type="checkbox" class="checkbox" data-complete="${escapeHtml(t.id)}" aria-label="Mark completed"><div style="min-width:0;flex:1"><div class="mini-task-title">${escapeHtml(t.title)}</div><div class="mini-task-sub">${niceDate(t.due)}</div></div><span class="task-tag ${t.priority.toLowerCase()}">${escapeHtml(t.priority)}</span></div>`).join('') : emptyState('tasks','No pending tasks — you are all caught up!')}</div></div><div><div class="section-header"><h3>Quick launch</h3><button data-goto="settings">Customize →</button></div><div class="panel"><button class="quick-link" data-goto="notes"><span class="quick-icon">${icon('notes')}</span><span><strong>LokiNotes</strong><small>Capture your next big idea</small></span><span class="arrow">→</span></button><button class="quick-link" data-goto="files"><span class="quick-icon">${icon('folder')}</span><span><strong>LokiFiles</strong><small>Browse local files and folders</small></span><span class="arrow">→</span></button><button class="quick-link" data-goto="monitor"><span class="quick-icon">${icon('activity')}</span><span><strong>SystemPulse</strong><small>Live CPU and memory insights</small></span><span class="arrow">→</span></button></div></div></div>`;
   panel.querySelectorAll('[data-complete]').forEach(box=>box.addEventListener('change',()=>toggleTask(box.dataset.complete)));
@@ -336,9 +340,71 @@ async function refreshStats(){
   }catch(error){if(currentView==='monitor')fail(error);}
 }
 function renderShare(){
-  panel.innerHTML=`${heading('THE NEXT CONNECTION','LokiShare','Our upcoming direct Wi-Fi file sharing module.')}
-    <div class="center-card"><div class="giant-icon">${icon('share')}</div><span class="eyebrow">COMING IN A FUTURE RELEASE</span><h2>Share files. Not your privacy.</h2><p>We are planning direct Android ↔ Windows file transfer over the same local network, without cloud accounts. This feature is <strong>not yet implemented</strong> in v0.2.1.</p></div>
-    <div class="roadmap"><div class="roadmap-card"><div class="roadmap-icon">${icon('shield')}</div><h3>Secure pairing</h3><p>Pair devices with a one-time code or QR scan before transferring files.</p></div><div class="roadmap-card"><div class="roadmap-icon">${icon('share')}</div><h3>Direct transfers</h3><p>Send files over local Wi-Fi, even when the internet is disconnected.</p></div><div class="roadmap-card"><div class="roadmap-icon">${icon('activity')}</div><h3>Live progress</h3><p>Track the status of incoming and outgoing transfers in real time.</p></div></div>`;
+  panel.innerHTML=`${heading('CONNECT YOUR DEVICES','LokiShare','Send files between Windows and your phone on the same private Wi-Fi. No cloud required.')}
+    <section class="share-intro"><span class="share-live">${icon('share')} LOCAL FILE TRANSFER · v0.3.0</span><h2>Your files. Your devices.<br><strong>One local connection.</strong></h2><p>Start a temporary sharing session, approve your phone, and choose exactly which files and folders to share.</p><div class="share-steps"><span>① Start Windows host</span><span>② Scan QR / enter code</span><span>③ Approve matching number</span><span>④ Transfer directly</span></div></section>
+    <div class="share-layout"><div>
+      <section class="panel share-card"><div class="section-header"><h3>Connection</h3><span class="share-badge" id="shareBadge">Offline</span></div>
+      <p class="muted share-info">Choose the private network connected to your phone. LokiShare starts only when you click Start.</p>
+      <div class="share-controls"><select class="field" id="shareInterface" aria-label="Network interface"><option value="">Loading local networks…</option></select><button class="button button-primary" id="shareStart">${icon('share')} Start sharing</button><button class="button button-danger" id="shareStop" hidden>Stop sharing</button></div>
+      <div id="shareInvite" hidden><div class="share-qr-layout"><div id="shareQR" class="share-qr"><span>QR code</span></div><div><span class="eyebrow">OPEN ON YOUR PHONE</span><div class="share-link" id="shareLink"></div><div class="share-code" id="shareCode"></div><p class="fine-print">Scan the QR, or type the local address and 10-character connection code into your phone browser. Keep this page open while sharing.</p></div></div></div></section>
+      <section class="panel share-card"><div class="section-header"><h3>Incoming · Phone → Windows</h3><span class="share-direction">RECEIVE</span></div><p class="muted share-info">Files sent by an approved phone are stored only in the folder you select. Original files are never overwritten.</p><div id="shareInbox" class="share-path">No receive folder selected</div><div class="share-controls"><button class="button" id="shareChooseInbox">${icon('folder')} Choose receive folder</button><button class="button button-ghost" id="shareDisableInbox">Disable receiving</button></div></section>
+      <section class="panel share-card"><div class="section-header"><h3>Outgoing · Windows → Phone</h3><span class="share-direction">SEND</span></div><p class="muted share-info">The phone can download only files you explicitly choose below. Downloads must be started on the phone.</p><button class="button" id="shareAddFiles">${icon('plus')} Add files to share</button><div id="shareSharedFiles" class="share-list"></div></section>
+    </div><div>
+      <section class="panel share-card"><div class="section-header"><h3>Pairing requests</h3><span class="share-badge">PC APPROVAL</span></div><p class="muted share-info">Compare the 6-digit number on both screens before approving a device. Never approve unknown devices.</p><div id="sharePending" class="share-list"></div></section>
+      <section class="panel share-card"><div class="section-header"><h3>Approved phones</h3><span class="share-badge">SESSION ONLY</span></div><div id="shareClients" class="share-list"></div></section>
+      <section class="panel share-card"><div class="section-header"><h3>Live activity</h3><span class="share-badge">TRANSFER HISTORY</span></div><div id="shareTransfers" class="share-list"></div></section>
+      <section class="share-security">${icon('shield')} <div><strong>Only use trusted Wi-Fi networks.</strong><p>v0.3.0 uses local HTTP. It has device approval and limited file access, but file contents are not encrypted on the network. Do not use public/hotel Wi-Fi or transfer sensitive documents.</p></div></section>
+    </div></div>`;
+  q('#shareStart').addEventListener('click', async()=>{const address=q('#shareInterface').value;if(!address)return toast('Select a private network first.',true);await shareCall(()=>window.loki.shareStart(address));});
+  q('#shareStop').addEventListener('click', async()=>{if(!confirm('End this sharing session and disconnect all phones?'))return;shareQRURL=null;await shareCall(()=>window.loki.shareStop());});
+  q('#shareChooseInbox').addEventListener('click',()=>shareCall(()=>window.loki.shareChooseInbox()));
+  q('#shareDisableInbox').addEventListener('click',()=>shareCall(()=>window.loki.shareDisableInbox()));
+  q('#shareAddFiles').addEventListener('click',()=>shareCall(()=>window.loki.shareAddFiles()));
+  window.loki.shareInterfaces().then(addresses=>{
+    if(currentView!=='share')return;
+    q('#shareInterface').innerHTML=addresses.length?addresses.map(item=>`<option value="${escapeHtml(item.address)}">${escapeHtml(item.name)} · ${escapeHtml(item.address)}</option>`).join(''):'<option value="">No private network detected</option>';
+    q('#shareStart').disabled=!addresses.length;
+  }).catch(fail);
+  shareStatusVersion=-1;
+  refreshShare().catch(fail);
+  shareTimer=setInterval(()=>{if(currentView==='share')refreshShare().catch(()=>{});},1400);
+}
+async function shareCall(action){
+  try {await action();await refreshShare();}catch(error){fail(error);}
+}
+async function refreshShare(){
+  if(currentView!=='share')return;
+  const state=await window.loki.shareStatus();
+  if(currentView!=='share'||state.version===shareStatusVersion)return;
+  shareStatusVersion=state.version;
+  const running=state.running;
+  q('#shareStart').hidden=running;q('#shareStop').hidden=!running;q('#shareInterface').disabled=running;
+  q('#shareBadge').textContent=running?'● Sharing active':'Offline';q('#shareBadge').classList.toggle('online',running);
+  q('#shareInvite').hidden=!running;
+  q('#shareInbox').textContent=state.inbox||'No receive folder selected';
+  q('#shareAddFiles').disabled=!running;
+  if(running){
+    q('#shareLink').textContent=state.url;
+    q('#shareCode').textContent=state.code;
+    if(shareQRURL!==state.url){
+      shareQRURL=state.url;
+      q('#shareQR').innerHTML='<span>Generating pairing QR…</span>';
+      window.loki.shareQRCode().then(url=>{
+        if(currentView==='share'&&shareQRURL===state.url){
+          if(url){const img=document.createElement('img');img.src=url;img.alt='QR code for connecting to LokiShare';q('#shareQR').replaceChildren(img);}
+          else q('#shareQR').textContent='Open the local address on your phone.';
+        }
+      }).catch(()=>{if(currentView==='share')q('#shareQR').textContent='Use the address and code shown here.';});
+    }
+  } else {shareQRURL=null;q('#shareQR').textContent='QR code';}
+  q('#shareSharedFiles').innerHTML=state.files.length?state.files.map(f=>`<div class="share-row"><div>${icon('file',17)} <span><strong>${escapeHtml(f.name)}</strong><small>${bytes(f.size)}</small></span></div><button class="share-row-action" data-remove-share="${escapeHtml(f.id)}">Remove</button></div>`).join(''):'<div class="share-empty">No files selected. Add files to make them downloadable on your phone.</div>';
+  q('#sharePending').innerHTML=state.pending.length?state.pending.map(p=>`<div class="share-request"><div class="share-request-head">${icon('activity')} <strong>${escapeHtml(p.device)}</strong></div><span class="eyebrow">MATCH NUMBER ON BOTH SCREENS</span><div class="share-match">${escapeHtml(p.match)}</div><div class="share-controls"><button class="button button-primary" data-pair-yes="${escapeHtml(p.id)}">${icon('check')} Approve</button><button class="button button-danger" data-pair-no="${escapeHtml(p.id)}">Reject</button></div></div>`).join(''):'<div class="share-empty">No pairing requests. Use the QR code or connection code to connect.</div>';
+  q('#shareClients').innerHTML=state.clients.length?state.clients.map(c=>`<div class="share-row"><div>${icon('check',17)}<span><strong>${escapeHtml(c.device)}</strong><small>Authorized for this session</small></span></div><button class="share-row-action" data-revoke="${escapeHtml(c.id)}">Disconnect</button></div>`).join(''):'<div class="share-empty">No phones connected.</div>';
+  q('#shareTransfers').innerHTML=state.transfers.length?state.transfers.slice(0,8).map(t=>`<div class="share-transfer"><div><strong>${escapeHtml(t.name)}</strong><span>${escapeHtml(t.direction)} · ${escapeHtml(t.status)} · ${bytes(t.bytes)} / ${bytes(t.size)}</span></div><div class="share-progress"><span style="width:${Math.min(100,t.size?Math.round(t.bytes/t.size*100):100)}%"></span></div></div>`).join(''):'<div class="share-empty">Your transfers will appear here.</div>';
+  panel.querySelectorAll('[data-remove-share]').forEach(el=>el.addEventListener('click',()=>shareCall(()=>window.loki.shareRemoveFile(el.dataset.removeShare))));
+  panel.querySelectorAll('[data-pair-yes]').forEach(el=>el.addEventListener('click',()=>shareCall(()=>window.loki.shareApprove(el.dataset.pairYes,true))));
+  panel.querySelectorAll('[data-pair-no]').forEach(el=>el.addEventListener('click',()=>shareCall(()=>window.loki.shareApprove(el.dataset.pairNo,false))));
+  panel.querySelectorAll('[data-revoke]').forEach(el=>el.addEventListener('click',()=>shareCall(()=>window.loki.shareRevoke(el.dataset.revoke))));
 }
 function renderSettings(){
   panel.innerHTML=`${heading('MAKE IT YOURS','Settings','Manage your workspace, local backups, and app updates.')}
@@ -348,7 +414,7 @@ function renderSettings(){
     <section class="panel setting-card"><div class="setting-line"><div><h3>Local backups</h3><p>Tasks, categories, notes, and settings are saved locally. Export a JSON backup or restore an earlier backup.</p></div><div style="display:flex;gap:9px"><button class="button" id="exportBackup">${icon('download')} Export</button><button class="button button-ghost" id="importBackup">${icon('upload')} Restore</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Version & updates</h3><p>Installed version: <strong>v${escapeHtml(info.version)}</strong>. New Windows installers update over the existing installation. GitHub Releases are publicly available without an app signing secret.</p><p id="updateMessage" class="fine-print"></p></div><div style="display:flex;gap:9px"><button class="button" id="checkUpdate">${icon('refresh')} Check Updates</button><button class="button button-ghost" id="releasePage">${icon('external')} Releases</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Your storage</h3><p>Saved data folder: <strong>${escapeHtml(info.dataDirectory||'Local app data')}</strong></p><p>Files and notes stay on your computer unless you export or share them.</p></div><button class="button button-ghost" id="openDataFolder">${icon('folder')} Open Folder</button></div></section>
-    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.2.1.</div>`;
+    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.3.0. LokiShare runs only when enabled and uses local HTTP.</div>`;
   q('#nameForm').addEventListener('submit',e=>{e.preventDefault();data.settings.displayName=q('#displayName').value.trim().slice(0,50)||'Creator';persist(true);renderSettings();});
   panel.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>{data.settings.accent=btn.dataset.accent;applyAccent();persist(true);renderSettings();}));
   q('#remindersEnabled').addEventListener('change',e=>{data.settings.reminders=e.target.checked;persist(true);});
@@ -392,7 +458,7 @@ function renderPaletteResults() {
   const query = paletteQuery.trim().toLowerCase();
   const matches = (s) => s.toLowerCase().includes(query);
   paletteItems = [
-    ...Object.entries(pages).filter(([key])=>key!=='share').map(([view,title])=>({label:title,kind:'Module',view,icon:view==='home'?'home':view==='monitor'?'activity':view==='files'?'folder':view==='tasks'?'tasks':view==='notes'?'notes':'settings'})),
+    ...Object.entries(pages).map(([view,title])=>({label:title,kind:'Module',view,icon:view==='home'?'home':view==='monitor'?'activity':view==='files'?'folder':view==='tasks'?'tasks':view==='notes'?'notes':'settings'})),
     ...data.notes.map(note=>({label:note.title||'Untitled note',kind:'Note',noteId:note.id,icon:'notes'})),
     ...data.tasks.map(task=>({label:task.title,kind:task.completed?'Completed task':'Task',taskId:task.id,icon:'tasks'}))
   ].filter(item=>matches(item.label)||matches(item.kind)).slice(0,12);
@@ -425,6 +491,7 @@ async function main(){
   q('#paletteInput').addEventListener('input',event=>{paletteQuery=event.target.value;paletteIndex=0;renderPaletteResults();});
   q('#paletteInput').addEventListener('keydown',handlePaletteKey);
   document.addEventListener('keydown', handleShortcuts);
+  window.loki.onShareChanged(()=>{if(currentView==='share')refreshShare().catch(()=>{});});
   window.loki.onCloseRequest(async()=>{try{await flushNoteEdits();await window.loki.completeClose(!lastSaveError);}catch(error){fail(error);window.loki.completeClose(false).catch(fail);}});
   try{
     const loaded=await Promise.all([window.loki.load(),window.loki.info()]);data=loaded[0];info=loaded[1];

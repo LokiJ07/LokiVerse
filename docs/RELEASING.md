@@ -1,51 +1,39 @@
-# LokiVerse v0.2.1 — GitHub Actions & In-place Upgrade Guide
+# Releasing LokiVerse v0.3.0
 
-The existing GitHub repository is `LokiJ07/LokiVerse` and v0.1.1 is installed on Windows. Do not create a new repository or run `git init` again.
+1. Export a backup from your currently installed LokiVerse.
+2. Copy the new source code into the **existing** LokiVerse Git repository, preserving `.git`.
+3. `npm install`, then `npm run check`.
+4. `git add -A && git commit -m "feat: LokiVerse v0.3.0 LokiShare" && git push origin main`.
+5. Verify **LokiVerse Windows CI** succeeded, including the Windows installer build.
+6. `git tag v0.3.0 && git push origin v0.3.0` (do not retag an existing published tag).
+7. Verify **LokiVerse GitHub Release** passed, with `LokiVerse-0.3.0-Setup-x64.exe` and `SHA256SUMS.txt`.
+8. Close v0.2.1 (or your installed version), run the new installer **without uninstalling the old app**.
+9. Verify notes, tasks, settings, backups, and v0.3.0 UI. Test LokiShare with a Windows PC + Android phone on the same trusted private LAN.
 
-## Before pushing
+## In-place upgrade invariants
 
-1. Open your installed **v0.1.1** → Settings → **Export**; keep the JSON backup outside the application data directory.
-2. Extract `LokiVerse-v0.2.1-CI-Hotfix-Source.zip` and copy its **contents** into the current local Git repository. Replace app sources, `package.json`, and `.github/workflows/` files.
-3. Preserve the `.git` directory and verify `git status` lists the expected source changes.
+- Never change `appId` (`com.lokij.lokiverse`) or `productName` (`LokiVerse`).
+- Keep Windows NSIS `oneClick: true`, `perMachine: false`, and userData location unchanged.
+- GitHub Actions creates releases using its built-in `GITHUB_TOKEN`; no custom signing key. The binary is unsigned and may trigger SmartScreen.
+- GitHub Releases update checker is manual: **this application does not silently install updates**.
 
-## Push to existing repository
+## Windows networking checks
 
-```bash
-git add -A
-git commit -m "feat: LokiVerse v0.2.1 productivity expansion"
-git push origin main
-```
+- Use an IPv4 entry for the LAN your phone is on (typically `192.168.x.x`).
+- If Windows Defender Firewall asks, allow LokiVerse on **Private networks** only.
+- Do not allow this application on public networks. Do not forward its temporary port to the internet.
+- Router client isolation and mobile hotspot rules may prevent devices from seeing each other. Avoid VPN interference.
+- Pair only when 6-digit verification numbers match; disconnect/stop sharing after transfers.
+- HTTP on Wi-Fi does not protect file contents from network eavesdropping: trusted/private networks only.
 
-Confirm **GitHub Actions → LokiVerse Windows CI** has succeeded. CI executes `npm run check`, builds the installer and uploads a temporary `.exe` artifact.
+## Final manual QA
 
-## Publish release
-
-```bash
-git tag v0.2.1
-git push origin v0.2.1
-```
-
-Confirm **GitHub Actions → LokiVerse GitHub Release** is green and published `LokiVerse-0.2.1-Setup-x64.exe` plus `SHA256SUMS.txt` under **Releases → v0.2.1**. The workflow uses the built-in `GITHUB_TOKEN`, **not a custom signing secret**.
-
-## Upgrade test on Windows
-
-1. Close running LokiVerse v0.1.1.
-2. Download the installer from the official `LokiJ07/LokiVerse` GitHub Release. Verify source and checksum.
-3. Run the **v0.2.1** installer **without uninstalling v0.1.1**.
-4. Check that LokiVerse opens as v0.2.1, Windows Apps has only one LokiVerse entry, and existing tasks, notes and settings remain.
-5. Create a note and task in v0.2.1, restart the app and verify they persist. See `docs/QA.md`.
-
-## Do not change these between versions
-
-- `package.json`: `build.appId = com.lokij.lokiverse`
-- `package.json`: `productName = LokiVerse`
-- NSIS per-user installer mode (`oneClick: true`, `perMachine: false`)
-- `app.getPath('userData')` workspace location or the `lokiverse-data.json` filename
-
-Changing identity can cause duplicate installations or lost access to expected data. As long as these settings remain stable, NSIS upgrade is designed for in-place installation; still test every release on Windows.
-
-## Notes / boundaries
-
-- Unsigned installers may trigger Windows SmartScreen. The CI build is **not code signed**.
-- The release checker opens the GitHub Release page; it does not install updates itself.
-- This environment can run Node tests and UI mock smoke tests but **cannot validate the compiled Windows `.exe` or actual in-place upgrade**. That final verification needs GitHub Actions and a Windows PC.
+- Open LokiShare; select LAN interface; Start.
+- Confirm local address, connection code and QR render.
+- On Android Chrome, use QR or type address/code; confirm 6-digit pairing on both screens.
+- Choose a receive folder, upload one file and verify bytes on disk.
+- From Windows, Add files; from Android, download and verify bytes.
+- Upload same filename twice and verify no overwrite.
+- Disconnect phone and verify further transfers are denied.
+- Stop sharing and verify the phone loses access.
+- Restart LokiVerse and verify the previous session does **not** automatically reopen.

@@ -8,6 +8,7 @@ const { compareVersions, isWithinFolder } = require('./shared/logic.cjs');
 const { createStorage } = require('./shared/storage.cjs');
 const { createFileOps } = require('./shared/fileops.cjs');
 const { dueReminders } = require('./shared/reminders.cjs');
+const { createLokiShare, listPrivateInterfaces } = require('./shared/lokishare.cjs');
 
 // Keep this identifier, package.json build.appId, and productName stable across releases.
 // Electron's userData directory is likewise kept stable: installs preserve tasks and notes.
@@ -23,6 +24,7 @@ let closeTimeout = null;
 const notifiedTasks = new Set();
 let reminderBusy = false;
 let remindersLoaded = false;
+const lokiShare = createLokiShare({onChange: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('share:changed'); }});
 
 function dataFile() { return path.join(app.getPath('userData'), 'lokiverse-data.json'); }
 function storage() { return createStorage(dataFile()); }
@@ -195,6 +197,39 @@ function registerHandlers() {
       cpu: usage, memoryTotal: os.totalmem(), memoryUsed: os.totalmem() - os.freemem(),
       uptime: os.uptime(), platform: `${os.type()} ${os.release()}`, hostname: os.hostname(), disk };
   });
+  // Explicitly activated LAN sharing; never expose general filesystem operations over HTTP.
+  safeHandle('share:interfaces', () => listPrivateInterfaces());
+  safeHandle('share:status', () => lokiShare.status());
+  safeHandle('share:start', address => {
+    if (!listPrivateInterfaces().some(entry => entry.address === address)) throw new Error('Select a private LAN/Wi-Fi address.');
+    return lokiShare.start(address);
+  });
+  safeHandle('share:stop', () => lokiShare.stop());
+  safeHandle('share:approve', (id, accept) => lokiShare.approve(id, accept === true));
+  safeHandle('share:revoke', id => lokiShare.revoke(id));
+  safeHandle('share:removeFile', id => lokiShare.removeFile(id));
+  safeHandle('share:chooseInbox', async () => {
+    const selection = await dialog.showOpenDialog(mainWindow, {
+      title: 'LokiShare: Choose folder for incoming files', properties: ['openDirectory']
+    });
+    if (selection.canceled || !selection.filePaths[0]) return lokiShare.status();
+    return lokiShare.setInbox(selection.filePaths[0]);
+  });
+  safeHandle('share:disableInbox', () => lokiShare.setInbox(null));
+  safeHandle('share:addFiles', async () => {
+    if (!lokiShare.status().running) throw new Error('Start LokiShare first.');
+    const selection = await dialog.showOpenDialog(mainWindow, {
+      title: 'LokiShare: Select files phone can download', properties: ['openFile', 'multiSelections']
+    });
+    if (selection.canceled || !selection.filePaths.length) return lokiShare.status();
+    return lokiShare.addFiles(selection.filePaths);
+  });
+  safeHandle('share:qr', async () => {
+    const url = lokiShare.inviteURL();
+    if (!url) return null;
+    const QRCode = require('qrcode');
+    return QRCode.toDataURL(url, {width:240, margin:2, errorCorrectionLevel:'M', color:{dark:'#1b1531',light:'#ffffff'}});
+  });
   safeHandle('app:checkUpdate', async () => {
     const info = await githubLatestRelease();
     if (!info) return { available: false, message: 'No public GitHub Release found yet.', current: app.getVersion() };
@@ -267,4 +302,5 @@ app.whenReady().then(() => {
   setInterval(checkReminders, 60000).unref();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }).catch(error => { dialog.showErrorBox('LokiVerse launch error', error.message); app.quit(); });
+app.on('before-quit', () => { lokiShare.stop().catch(() => {}); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });
