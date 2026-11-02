@@ -27,11 +27,16 @@ const icon = (name, size = 18) => `<svg width="${size}" height="${size}" viewBox
 const escapeHtml = value => String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const q = selector => document.querySelector(selector);
 const panel = q('#content');
-const pages = {home:'Overview',tasks:'My Tasks',notes:'LokiNotes',files:'LokiFiles',monitor:'SystemPulse',share:'LokiShare',settings:'Settings'};
+const pages = {home:'Overview',planner:'Weekly Planner',tasks:'My Tasks',notes:'LokiNotes',files:'LokiFiles',monitor:'SystemPulse',share:'LokiShare',settings:'Settings'};
 let data = {tasks:[],notes:[],settings:{displayName:'Creator'}};
 let info = {version:'0.2.1'};
 let currentView = 'home';
 let taskFilter = 'all';
+let editingTaskId = null;
+let taskToggleBusy = false;
+let plannerWeekOffset = 0;
+let prefillTaskDate = '';
+let focusOnly = false;
 let taskSearch = '';
 let taskCategory = 'all';
 let selectedNoteId = null;
@@ -106,6 +111,9 @@ function persist(showToast = false) {
   return saveChain;
 }
 function id() { return `${Date.now()}-${Math.random().toString(16).slice(2)}`; }
+function localDateKey(date = new Date()) {return `${date.getFullYear()}-${String(date.getMonth()+1).padStart(2,'0')}-${String(date.getDate()).padStart(2,'0')}`;}
+function atMidday(key) {return new Date(`${key}T12:00:00`);}
+function shiftDate(key, days) {const d=atMidday(key); d.setDate(d.getDate()+days);return localDateKey(d);}
 function niceDate(value) {
   if (!value) return 'No due date';
   const date = new Date(value + (value.length === 10 ? 'T12:00:00' : ''));
@@ -132,6 +140,7 @@ function heading(eyebrow, title, subtitle, action = '') {
 function render() {
   switch (currentView) {
     case 'home': renderHome(); break;
+    case 'planner': renderPlanner(); break;
     case 'tasks': renderTasks(); break;
     case 'notes': renderNotes(); break;
     case 'files': renderFiles(); break;
@@ -145,51 +154,120 @@ function renderHome() {
   const completed = data.tasks.length - pending.length;
   const completionPercent = data.tasks.length ? Math.round(completed / data.tasks.length * 100) : 0;
   const now = new Date();
-  const todayKey = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-${String(now.getDate()).padStart(2,'0')}`;
+  const todayKey = localDateKey(now);
   const overdue = pending.filter(t => t.due && t.due < todayKey).length;
+  const dueToday = pending.filter(t=>t.due===todayKey).length;
+  const weekEnd=shiftDate(todayKey,6);
+  const dueWeek=pending.filter(t=>t.due>=todayKey && t.due<=weekEnd).length;
   const upcoming = [...pending].sort((a,b)=>(a.due || '9999').localeCompare(b.due || '9999')).slice(0,4);
   panel.innerHTML = `
     ${heading('YOUR CREATIVE COMMAND CENTER',`Welcome back, ${data.settings.displayName}! ✦`,'One beautiful place for the tools that power your day.')}
     <section class="hero"><div><span class="eyebrow" style="color:#c4a9ff">✦ &nbsp; LOKIVERSE · VERSION ${escapeHtml(info.version)}</span><h2>Your space to create <strong>more.</strong></h2><p>Organize ideas, stay on top of tasks, explore files, and keep an eye on your system. All in one private, offline-first workspace.</p><button class="button button-primary" data-goto="tasks">${icon('plus')} Create a task ${icon('arrow',16)}</button></div><div class="hero-icon">L</div></section>
-    <div class="stats-grid"><div class="stat-card"><span class="stat-card-label">Total Tasks</span><div class="stat-icon">${icon('tasks')}</div><div class="stat-card-number">${data.tasks.length}</div><div class="stat-card-bottom">${data.tasks.filter(t=>t.category!=="General").length} organized by category</div></div><div class="stat-card"><span class="stat-card-label">Notes Created</span><div class="stat-icon">${icon('notes')}</div><div class="stat-card-number">${data.notes.length}</div><div class="stat-card-bottom">${data.notes.filter(n=>n.pinned).length} pinned ideas</div></div><div class="stat-card"><span class="stat-card-label">Tasks Finished</span><div class="stat-icon">${icon('check')}</div><div class="stat-card-number">${completed}</div><div class="stat-card-bottom">Keep the momentum going</div></div><div class="stat-card"><span class="stat-card-label">Workspace Modules</span><div class="stat-icon">${icon('sparkles')}</div><div class="stat-card-number">5<span style="font-size:14px;color:#9390ae"> / 5</span></div><div class="stat-card-bottom">Now includes LokiShare</div></div></div>
-    <section class="progress-summary" aria-label="Task progress"><div class="progress-summary-copy"><span class="eyebrow">TODAY AT A GLANCE</span><h3>${completionPercent}% of tasks completed</h3><p>${pending.length} active · ${completed} finished · ${overdue} overdue</p></div><div class="progress-summary-track"><span style="width:${completionPercent}%"></span></div><button class="button button-ghost" data-goto="tasks">Manage tasks ${icon('arrow',15)}</button></section>
+    <div class="stats-grid"><div class="stat-card"><span class="stat-card-label">Total Tasks</span><div class="stat-icon">${icon('tasks')}</div><div class="stat-card-number">${data.tasks.length}</div><div class="stat-card-bottom">${data.tasks.filter(t=>t.category!=="General").length} organized by category</div></div><div class="stat-card"><span class="stat-card-label">Notes Created</span><div class="stat-icon">${icon('notes')}</div><div class="stat-card-number">${data.notes.length}</div><div class="stat-card-bottom">${data.notes.filter(n=>n.pinned).length} pinned ideas</div></div><div class="stat-card"><span class="stat-card-label">Tasks Finished</span><div class="stat-icon">${icon('check')}</div><div class="stat-card-number">${completed}</div><div class="stat-card-bottom">Keep the momentum going</div></div><div class="stat-card"><span class="stat-card-label">Workspace Modules</span><div class="stat-icon">${icon('sparkles')}</div><div class="stat-card-number">6<span style="font-size:14px;color:#9390ae"> / 6</span></div><div class="stat-card-bottom">Includes LokiShare</div></div></div>
+    <section class="progress-summary" aria-label="Task progress"><div class="progress-summary-copy"><span class="eyebrow">TODAY AT A GLANCE</span><h3>${completionPercent}% of tasks completed</h3><p>${pending.length} active · ${completed} finished · ${overdue} overdue · ${dueToday} due today</p></div><div class="progress-summary-track"><span style="width:${completionPercent}%"></span></div><button class="button button-ghost" data-goto="tasks">Manage tasks ${icon('arrow',15)}</button></section>
+    <div class="focus-board"><div><span class="eyebrow">WEEKLY FOCUS</span><h3>${dueWeek} tasks due over the next 7 days</h3><p>${overdue} overdue · ${dueToday} scheduled for today · ${data.tasks.filter(t=>!t.completed && t.recurrence && t.recurrence!=='none').length} repeating</p></div><button class="button button-primary" data-goto="planner">${icon('calendar')} Open weekly planner</button></div>
     <div class="two-col"><div><div class="section-header"><h3>Upcoming tasks</h3><button data-goto="tasks">View all →</button></div><div class="panel">${upcoming.length ? upcoming.map(t=>`<div class="mini-task"><input type="checkbox" class="checkbox" data-complete="${escapeHtml(t.id)}" aria-label="Mark completed"><div style="min-width:0;flex:1"><div class="mini-task-title">${escapeHtml(t.title)}</div><div class="mini-task-sub">${niceDate(t.due)}</div></div><span class="task-tag ${t.priority.toLowerCase()}">${escapeHtml(t.priority)}</span></div>`).join('') : emptyState('tasks','No pending tasks — you are all caught up!')}</div></div><div><div class="section-header"><h3>Quick launch</h3><button data-goto="settings">Customize →</button></div><div class="panel"><button class="quick-link" data-goto="notes"><span class="quick-icon">${icon('notes')}</span><span><strong>LokiNotes</strong><small>Capture your next big idea</small></span><span class="arrow">→</span></button><button class="quick-link" data-goto="files"><span class="quick-icon">${icon('folder')}</span><span><strong>LokiFiles</strong><small>Browse local files and folders</small></span><span class="arrow">→</span></button><button class="quick-link" data-goto="monitor"><span class="quick-icon">${icon('activity')}</span><span><strong>SystemPulse</strong><small>Live CPU and memory insights</small></span><span class="arrow">→</span></button></div></div></div>`;
   panel.querySelectorAll('[data-complete]').forEach(box=>box.addEventListener('change',()=>toggleTask(box.dataset.complete)));
   bindGoto();
 }
 function bindGoto() { panel.querySelectorAll('[data-goto]').forEach(btn=>btn.addEventListener('click',()=>switchView(btn.dataset.goto))); }
-function toggleTask(taskId) { const task = data.tasks.find(t=>t.id===taskId); if (!task) return; task.completed=!task.completed; persist(); render(); }
+async function toggleTask(taskId) {
+  if (taskToggleBusy) return;
+  taskToggleBusy=true;
+  try {
+    const result=await window.loki.togglePlannedTask(data.tasks,taskId,localDateKey(),id());
+    data.tasks=result.tasks;
+    await persist();
+    if (result.next) toast('Task completed! Next recurring occurrence scheduled.');
+    render();
+  } catch (error) { fail(error); render(); }
+  finally { taskToggleBusy=false; }
+}
+function noteChoices(selected = '') {
+  return `<option value="">No linked note</option>`+data.notes.map(note=>`<option value="${escapeHtml(note.id)}" ${note.id===selected?'selected':''}>${escapeHtml(note.title||'Untitled note')}</option>`).join('');
+}
+function goToNote(noteId) {
+  if (!data.notes.some(note=>note.id===noteId)) {toast('Linked note is no longer available.',true);return;}
+  selectedNoteId=noteId; noteQuery='';noteFolder='all';notePreview=false;switchView('notes');
+}
+function bindLinkedNotes() {
+  panel.querySelectorAll('[data-open-note]').forEach(el=>el.addEventListener('click',()=>goToNote(el.dataset.openNote)));
+}
+function recurrenceLabel(value){return ({daily:'Daily',weekly:'Weekly',monthly:'Monthly'})[value]||'One-time';}
+
 function categoryChoices(items, selected, emptyLabel='All categories') {
   const groups=[...new Set(items.map(x=>x.category||x.folder||'General'))].sort((a,b)=>a.localeCompare(b));
   return `<option value="all" ${selected==='all'?'selected':''}>${emptyLabel}</option>`+groups.map(g=>`<option value="${escapeHtml(g)}" ${selected===g?'selected':''}>${escapeHtml(g)}</option>`).join('');
 }
+function renderPlanner() {
+  const now=localDateKey();
+  const thisWeek=atMidday(now), weekday=(thisWeek.getDay()+6)%7;
+  const start=shiftDate(now,-weekday+plannerWeekOffset*7);
+  const dates=Array.from({length:7},(_,i)=>shiftDate(start,i));
+  const end=dates[6];
+  const active=data.tasks.filter(t=>!t.completed);
+  const overdue=active.filter(t=>t.due && t.due<start);
+  const unscheduled=active.filter(t=>!t.due);
+  const week=active.filter(t=>t.due>=start&&t.due<=end);
+  const countToday=active.filter(t=>t.due===now).length;
+  const card=t=>`<div class="planner-item ${t.priority==='High'?'high':''}"><label class="planner-item-check"><input type="checkbox" class="checkbox" data-complete="${escapeHtml(t.id)}" aria-label="Complete ${escapeHtml(t.title)}"></label><div class="planner-item-main"><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.dueTime||'Any time')} · ${escapeHtml(t.category||'General')}${t.recurrence&&t.recurrence!=='none'?' · ↻ '+recurrenceLabel(t.recurrence):''}</small>${t.noteId&&data.notes.some(n=>n.id===t.noteId)?`<button class="planner-note" data-open-note="${escapeHtml(t.noteId)}">${icon('notes',12)} Open note</button>`:''}</div></div>`;
+  panel.innerHTML=`${heading('ORGANIZE YOUR NEXT SEVEN DAYS','Weekly Planner','A calendar-based view of your existing tasks. Everything stays in your local workspace.',`<button class="button button-primary" id="plannerNewTask">${icon('plus')} Add task</button>`)}
+    <div class="planner-banner"><div><span class="eyebrow">WEEK AT A GLANCE</span><h3>${escapeHtml(niceDate(start))} – ${escapeHtml(niceDate(end))}</h3><p>${week.length} planned · ${countToday} due today · ${overdue.length} carried over · ${unscheduled.length} unscheduled</p></div><div class="planner-week-controls"><button class="button button-ghost" id="plannerPrev" title="Previous week">← Previous</button><button class="button button-ghost" id="plannerToday">This week</button><button class="button button-ghost" id="plannerNext" title="Next week">Next →</button></div></div>
+    <div class="planner-calendar">${dates.map((d,i)=>{const items=week.filter(t=>t.due===d).sort((a,b)=>(a.dueTime||'99:99').localeCompare(b.dueTime||'99:99'));return `<section class="planner-day ${d===now?'is-today':''}"><div class="planner-day-header"><span>${['MON','TUE','WED','THU','FRI','SAT','SUN'][i]}</span><strong>${escapeHtml(d.slice(8))}</strong></div><div class="planner-day-body">${items.length?items.map(card).join(''):`<span class="planner-day-empty">Nothing planned</span>`}</div><button class="planner-add-day" data-plan-date="${d}">+ Add for ${escapeHtml(niceDate(d).replace(/,.*$/,''))}</button></section>`}).join('')}</div>
+    <div class="planner-bottom"><section class="panel planner-backlog"><div class="section-header"><h3>${icon('clock',18)} Carryover <span class="pill">${overdue.length}</span></h3></div>${overdue.length?overdue.slice(0,15).map(t=>`<div class="planner-backlog-item"><span><strong>${escapeHtml(t.title)}</strong><small>Due ${escapeHtml(niceDate(t.due))}</small></span><button class="button button-ghost" data-reschedule="${escapeHtml(t.id)}">Reschedule</button></div>`).join(''):'<p class="fine-print">No tasks are overdue for this week.</p>'}</section>
+    <section class="panel planner-backlog"><div class="section-header"><h3>${icon('tasks',18)} Unscheduled <span class="pill">${unscheduled.length}</span></h3></div>${unscheduled.length?unscheduled.slice(0,15).map(t=>`<div class="planner-backlog-item"><span><strong>${escapeHtml(t.title)}</strong><small>${escapeHtml(t.category||'General')}</small></span><label class="planner-schedule-label">Plan<select class="field" data-schedule-task="${escapeHtml(t.id)}"><option value="">Choose day</option>${dates.map(d=>`<option value="${d}">${escapeHtml(niceDate(d))}</option>`).join('')}</select></label></div>`).join(''):'<p class="fine-print">All active tasks have a date.</p>'}</section></div>
+    <p class="fine-print planner-privacy">This calendar is entirely local. Recurring tasks create one future occurrence when completed; no cloud scheduling or background sync.</p>`;
+  q('#plannerPrev').addEventListener('click',()=>{plannerWeekOffset=Math.max(-52,plannerWeekOffset-1);renderPlanner();});
+  q('#plannerToday').addEventListener('click',()=>{plannerWeekOffset=0;renderPlanner();});
+  q('#plannerNext').addEventListener('click',()=>{plannerWeekOffset=Math.min(52,plannerWeekOffset+1);renderPlanner();});
+  q('#plannerNewTask').addEventListener('click',()=>{prefillTaskDate=now;switchView('tasks');});
+  panel.querySelectorAll('[data-plan-date]').forEach(b=>b.addEventListener('click',()=>{prefillTaskDate=b.dataset.planDate;switchView('tasks');}));
+  panel.querySelectorAll('[data-schedule-task]').forEach(b=>b.addEventListener('change',()=>{const task=data.tasks.find(t=>t.id===b.dataset.scheduleTask);if(!task||!b.value)return;task.due=b.value;task.recurrenceDay=Number(b.value.slice(-2));persist();renderPlanner();}));
+  panel.querySelectorAll('[data-reschedule]').forEach(b=>b.addEventListener('click',()=>{const task=data.tasks.find(t=>t.id===b.dataset.reschedule);if(!task)return;editingTaskId=task.id;taskFilter='all';taskCategory='all';taskSearch='';switchView('tasks');}));
+  panel.querySelectorAll('[data-complete]').forEach(b=>b.addEventListener('change',()=>toggleTask(b.dataset.complete)));
+  bindLinkedNotes();
+}
 function renderTasks() {
   const total=data.tasks.length;
   const today=new Date();const todayKey=`${today.getFullYear()}-${String(today.getMonth()+1).padStart(2,'0')}-${String(today.getDate()).padStart(2,'0')}`;
-  let shown=data.tasks.filter(t=>taskFilter==='all'||(taskFilter==='active'?!t.completed:taskFilter==='completed'?t.completed:taskFilter==='overdue'?!t.completed&&t.due&&t.due<todayKey:true));
+  let shown=data.tasks.filter(t=>taskFilter==='all'||(taskFilter==='active'?!t.completed:taskFilter==='completed'?t.completed:taskFilter==='overdue'?!t.completed&&t.due&&t.due<todayKey:taskFilter==='today'?!t.completed&&t.due===todayKey:true));
   shown=shown.filter(t=>(taskCategory==='all'||(t.category||'General')===taskCategory) && (t.title+' '+(t.category||'')).toLowerCase().includes(taskSearch.toLowerCase()));
   shown.sort((a,b)=>(Number(a.completed)-Number(b.completed))||(a.due||'9999').localeCompare(b.due||'9999')||(b.createdAt||'').localeCompare(a.createdAt||''));
   panel.innerHTML = `${heading('MAKE EVERY DAY COUNT','My Tasks','Plan with priorities, categories and optional local desktop reminders.',`<span class="pill">${total} TOTAL TASKS</span>`)}
     <form id="taskForm" class="panel enhanced-form"><div class="form-row"><input class="field flex-field" name="title" placeholder="What needs to be done?" required maxlength="240" autocomplete="off"><select class="field" name="priority"><option>Normal</option><option>High</option><option>Low</option></select><button class="button button-primary" type="submit">${icon('plus')} Add task</button></div>
-    <div class="form-row options-row"><label class="compact-label">Category<input class="field" name="category" maxlength="40" value="General" placeholder="Project name"></label><label class="compact-label">Due date<input class="field" name="due" type="date"></label><label class="compact-label">Time (optional)<input class="field" name="dueTime" type="time"></label><small class="fine-print">Reminders: at the selected time (9:00 AM if empty), while the app is running.</small></div></form>
-    <div class="task-toolbar"><div class="filter-row">${[['all','All'],['active','Active'],['completed','Completed'],['overdue','Overdue']].map(([key,label])=>`<button class="filter-chip ${taskFilter===key?'active':''}" data-filter="${key}">${label}</button>`).join('')}</div><input id="taskSearch" class="field" type="search" placeholder="Find a task..." value="${escapeHtml(taskSearch)}"><select id="taskCategory" class="field">${categoryChoices(data.tasks,taskCategory)}</select></div>
-    <div class="task-list">${shown.length?shown.map(t=>`<div class="task-row ${t.completed?'done':''}"><input type="checkbox" class="checkbox" data-complete="${escapeHtml(t.id)}" ${t.completed?'checked':''} aria-label="Toggle completed"><div class="task-main"><div class="task-name">${escapeHtml(t.title)}</div><div class="task-meta">${icon('calendar',12)} ${escapeHtml(niceDate(t.due))}${t.dueTime?' · '+escapeHtml(t.dueTime):''} · ${escapeHtml(t.category||'General')} · ${escapeHtml(compactTime(t.createdAt))}</div></div><span class="task-tag ${t.priority.toLowerCase()}">${escapeHtml(t.priority)}</span><button class="icon-button" data-edit-task="${escapeHtml(t.id)}" title="Edit task">${icon('settings')}</button><button class="icon-button danger-icon" data-delete-task="${escapeHtml(t.id)}" title="Delete task">${icon('trash')}</button></div>`).join(''):emptyState('check','No matching tasks')}</div>`;
+    <div class="form-row options-row"><label class="compact-label">Category<input class="field" name="category" maxlength="40" value="General" placeholder="Project name"></label><label class="compact-label">Due date<input class="field" name="due" type="date" value="${escapeHtml(prefillTaskDate)}"></label><label class="compact-label">Time (optional)<input class="field" name="dueTime" type="time"></label><label class="compact-label">Repeat<select class="field" name="recurrence"><option value="none">Never</option><option value="daily">Daily</option><option value="weekly">Weekly</option><option value="monthly">Monthly</option></select></label><label class="compact-label">Related LokiNote<select class="field" name="noteId">${noteChoices()}</select></label><small class="fine-print">Repeating tasks need a due date. Checking one off schedules one future occurrence. Reminders appear while LokiVerse is running.</small></div></form>
+    <div class="task-toolbar"><div class="filter-row">${[['all','All'],['active','Active'],['today','Today'],['completed','Completed'],['overdue','Overdue']].map(([key,label])=>`<button class="filter-chip ${taskFilter===key?'active':''}" data-filter="${key}">${label}</button>`).join('')}</div><input id="taskSearch" class="field" type="search" placeholder="Find a task..." value="${escapeHtml(taskSearch)}"><select id="taskCategory" class="field">${categoryChoices(data.tasks,taskCategory)}</select></div>
+    <div class="task-list">${shown.length?shown.map(t=>editingTaskId===t.id?`
+      <form class="panel task-edit-form" data-edit-form="${escapeHtml(t.id)}"><div class="form-row"><input class="field flex-field" maxlength="240" name="title" value="${escapeHtml(t.title)}" required><select name="priority" class="field">${['Normal','High','Low'].map(p=>`<option ${p===t.priority?'selected':''}>${p}</option>`).join('')}</select></div>
+      <div class="form-row options-row"><label class="compact-label">Category<input class="field" name="category" maxlength="40" value="${escapeHtml(t.category||'General')}"></label><label class="compact-label">Due<input class="field" type="date" name="due" value="${escapeHtml(t.due)}"></label><label class="compact-label">Time<input class="field" type="time" name="dueTime" value="${escapeHtml(t.dueTime||'')}"></label><label class="compact-label">Repeat<select name="recurrence" class="field">${[['none','Never'],['daily','Daily'],['weekly','Weekly'],['monthly','Monthly']].map(([v,l])=>`<option value="${v}" ${t.recurrence===v?'selected':''}>${l}</option>`).join('')}</select></label><label class="compact-label">LokiNote<select name="noteId" class="field">${noteChoices(t.noteId)}</select></label></div><div class="edit-actions"><button class="button button-primary" type="submit">Save changes</button><button class="button button-ghost" type="button" id="cancelTaskEdit">Cancel</button></div></form>`:
+      `<div class="task-row ${t.completed?'done':''}"><input type="checkbox" class="checkbox" data-complete="${escapeHtml(t.id)}" ${t.completed?'checked':''} aria-label="Toggle completed"><div class="task-main"><div class="task-name">${escapeHtml(t.title)} ${t.recurrence&&t.recurrence!=='none'?`<span class="repeat-pill">↻ ${recurrenceLabel(t.recurrence)}</span>`:''}</div><div class="task-meta">${icon('calendar',12)} ${escapeHtml(niceDate(t.due))}${t.dueTime?' · '+escapeHtml(t.dueTime):''} · ${escapeHtml(t.category||'General')}${t.noteId&&data.notes.some(n=>n.id===t.noteId)?` · <button class="inline-note-link" data-open-note="${escapeHtml(t.noteId)}">${icon('notes',12)} ${escapeHtml(data.notes.find(n=>n.id===t.noteId).title||'Note')}</button>`:''}</div></div><span class="task-tag ${t.priority.toLowerCase()}">${escapeHtml(t.priority)}</span><button class="icon-button" data-edit-task="${escapeHtml(t.id)}" title="Edit task">${icon('settings')}</button><button class="icon-button danger-icon" data-delete-task="${escapeHtml(t.id)}" title="Delete task">${icon('trash')}</button></div>`).join(''):emptyState('check','No matching tasks')}</div>`;
   q('#taskForm').addEventListener('submit',e=>{
     e.preventDefault();const f=new FormData(e.currentTarget),title=String(f.get('title')||'').trim();if(!title)return;
-    data.tasks.push({id:id(),title,priority:f.get('priority'),due:String(f.get('due')||''),dueTime:String(f.get('dueTime')||''),category:String(f.get('category')||'General').trim().slice(0,40)||'General',completed:false,createdAt:new Date().toISOString()});
-    persist();toast('Task created.');renderTasks();
+    const due=String(f.get('due')||''),recurrence=String(f.get('recurrence')||'none');
+    if (recurrence!=='none'&&!due) {toast('Choose a due date for recurring tasks.',true);return;}
+    data.tasks.push({id:id(),title,priority:f.get('priority'),due,dueTime:String(f.get('dueTime')||''),category:String(f.get('category')||'General').trim().slice(0,40)||'General',completed:false,createdAt:new Date().toISOString(),recurrence,recurrenceDay:due?Number(due.slice(-2)):0,noteId:String(f.get('noteId')||''),completedAt:'',nextTaskId:''});
+    prefillTaskDate='';persist();toast('Task created.');renderTasks();
   });
   q('#taskSearch').addEventListener('input',e=>{taskSearch=e.target.value;const focused=q('#taskSearch');const start=focused.selectionStart;renderTasks();q('#taskSearch').focus();q('#taskSearch').setSelectionRange(start,start);});
   q('#taskCategory').addEventListener('change',e=>{taskCategory=e.target.value;renderTasks()});
   panel.querySelectorAll('[data-complete]').forEach(b=>b.addEventListener('change',()=>toggleTask(b.dataset.complete)));
   panel.querySelectorAll('[data-filter]').forEach(b=>b.addEventListener('click',()=>{taskFilter=b.dataset.filter;renderTasks()}));
-  panel.querySelectorAll('[data-edit-task]').forEach(b=>b.addEventListener('click',()=>{
-    const task=data.tasks.find(t=>t.id===b.dataset.editTask);if(!task)return;
-    const title=prompt('Edit task title',task.title);if(title===null)return;
-    if(!title.trim()){toast('Task title cannot be empty.',true);return;}
-    const category=prompt('Category',task.category||'General');if(category===null)return;
-    task.title=title.trim().slice(0,240);task.category=category.trim().slice(0,40)||'General';persist();renderTasks();
-  }));
+  panel.querySelectorAll('[data-edit-task]').forEach(b=>b.addEventListener('click',()=>{editingTaskId=b.dataset.editTask;renderTasks();}));
+  const editForm=panel.querySelector('[data-edit-form]');
+  if(editForm){
+    editForm.addEventListener('submit',e=>{
+      e.preventDefault();const t=data.tasks.find(t=>t.id===editForm.dataset.editForm);if(!t)return;
+      const f=new FormData(editForm), title=String(f.get('title')||'').trim(), due=String(f.get('due')||'');
+      if(!title)return;
+      const recurrence=String(f.get('recurrence')||'none');if(recurrence!=='none'&&!due){toast('Repeating tasks need a due date.',true);return;}
+      const oldDue=t.due;
+      Object.assign(t,{title:title.slice(0,240),priority:String(f.get('priority')),category:String(f.get('category')||'General').trim().slice(0,40)||'General',due,dueTime:String(f.get('dueTime')||''),recurrence,noteId:String(f.get('noteId')||'')});
+      if(oldDue!==due)t.recurrenceDay=due?Number(due.slice(-2)):0;
+      editingTaskId=null;persist();renderTasks();toast('Task updated.');
+    });
+    q('#cancelTaskEdit').addEventListener('click',()=>{editingTaskId=null;renderTasks();});
+  }
+  bindLinkedNotes();
   panel.querySelectorAll('[data-delete-task]').forEach(b=>b.addEventListener('click',()=>{if(!confirm('Delete this task?'))return;data.tasks=data.tasks.filter(t=>t.id!==b.dataset.deleteTask);persist();renderTasks();}));
 }
 function renderMarkdown(value) {
@@ -213,7 +291,7 @@ function renderNotes() {
   const selected=data.notes.find(n=>n.id===selectedNoteId);
   panel.innerHTML=`${heading('CAPTURE · ORGANIZE · CREATE','LokiNotes','Notes with folders, pinned ideas, Markdown formatting and safe local preview.',`<button class="button button-primary" id="newNote">${icon('plus')} New note</button>`)}
     <div class="note-layout"><section class="panel note-sidebar"><input class="field search" id="noteSearch" type="search" placeholder="Search notes..." value="${escapeHtml(noteQuery)}"><select id="noteFolderFilter" class="field note-folder-select">${categoryChoices(data.notes.map(n=>({category:n.folder||'General'})),noteFolder,'All folders')}</select><div id="noteList">${noteListHtml()}</div></section>
-    <section class="panel note-editor">${selected?`<div class="note-editor-top"><input id="noteTitle" maxlength="140" placeholder="Untitled note" value="${escapeHtml(selected.title)}"><button class="button button-ghost" id="pinNote">${selected.pinned?'✦ Pinned':'☆ Pin'}</button></div><div class="note-tools"><label class="compact-label">Folder<input id="noteFolder" class="field" maxlength="40" value="${escapeHtml(selected.folder||'General')}" placeholder="Folder name"></label><div class="note-tabs"><button id="editNote" class="filter-chip ${!notePreview?'active':''}">Edit</button><button id="previewNote" class="filter-chip ${notePreview?'active':''}">Preview</button></div></div><div id="markdownToolbar" class="markdown-toolbar" ${notePreview?'hidden':''}><button class="format-btn" data-format="bold" title="Bold">B</button><button class="format-btn" data-format="italic" title="Italic"><i>I</i></button><button class="format-btn" data-format="heading" title="Heading">H1</button><button class="format-btn" data-format="bullet" title="Bullet">• List</button><span class="fine-print">Markdown supported · **bold**, *italic*, # heading</span></div><textarea id="noteBody" maxlength="100000" placeholder="Let your ideas flow..." ${notePreview?'hidden':''}></textarea><div id="noteRendered" class="markdown-preview" ${!notePreview?'hidden':''}>${renderMarkdown(selected.body)}</div><div class="editor-bottom"><span><span id="noteStatus">Saved locally</span> <span id="noteCount" class="word-count"></span></span><div class="note-export-actions"><button id="exportNoteMarkdown" class="button button-ghost">${icon('download')} Export .md</button><button id="deleteNote" class="button button-danger">${icon('trash')} Delete</button></div></div>`: `<div class="empty" style="margin:auto">${icon('notes',32)}<strong>Your thoughts, your universe.</strong><p>Create a note or select one.</p></div>`}</section></div>`;
+    <section class="panel note-editor">${selected?`<div class="note-editor-top"><input id="noteTitle" maxlength="140" placeholder="Untitled note" value="${escapeHtml(selected.title)}"><button class="button button-ghost" id="pinNote">${selected.pinned?'✦ Pinned':'☆ Pin'}</button></div><div class="note-tools"><label class="compact-label">Folder<input id="noteFolder" class="field" maxlength="40" value="${escapeHtml(selected.folder||'General')}" placeholder="Folder name"></label><div class="note-tabs"><button id="editNote" class="filter-chip ${!notePreview?'active':''}">Edit</button><button id="previewNote" class="filter-chip ${notePreview?'active':''}">Preview</button></div></div><div id="markdownToolbar" class="markdown-toolbar" ${notePreview?'hidden':''}><button class="format-btn" data-format="bold" title="Bold">B</button><button class="format-btn" data-format="italic" title="Italic"><i>I</i></button><button class="format-btn" data-format="heading" title="Heading">H1</button><button class="format-btn" data-format="bullet" title="Bullet">• List</button><span class="fine-print">Markdown supported · **bold**, *italic*, # heading</span></div><textarea id="noteBody" maxlength="100000" placeholder="Let your ideas flow..." ${notePreview?'hidden':''}></textarea><div id="noteRendered" class="markdown-preview" ${!notePreview?'hidden':''}>${renderMarkdown(selected.body)}</div><div class="related-tasks"><span class="eyebrow">LINKED TASKS</span><div>${data.tasks.filter(t=>t.noteId===selected.id && !t.completed).slice(0,6).map(t=>`<button class="related-task" data-open-task="${escapeHtml(t.id)}">${icon('tasks',13)} ${escapeHtml(t.title)}</button>`).join('')||'<small class="fine-print">Link a task to this note from My Tasks.</small>'}</div></div><div class="editor-bottom"><span><span id="noteStatus">Saved locally</span> <span id="noteCount" class="word-count"></span></span><div class="note-export-actions"><button id="exportNoteMarkdown" class="button button-ghost">${icon('download')} Export .md</button><button id="deleteNote" class="button button-danger">${icon('trash')} Delete</button></div></div>`: `<div class="empty" style="margin:auto">${icon('notes',32)}<strong>Your thoughts, your universe.</strong><p>Create a note or select one.</p></div>`}</section></div>`;
   if(selected){q('#noteBody').value=selected.body;updateNoteCount();}
   q('#newNote').addEventListener('click',()=>{
     const note={id:id(),title:'Untitled note',body:'',folder:noteFolder==='all'?'General':noteFolder,pinned:false,updatedAt:new Date().toISOString()};
@@ -240,7 +318,8 @@ function renderNotes() {
     area.setRangeText(wrapper,a,b,'select');area.dispatchEvent(new Event('input',{bubbles:true}));area.focus();
   }));
   q('#exportNoteMarkdown').addEventListener('click',async()=>{try{await flushNoteEdits();const result=await window.loki.exportMarkdown(selected.id);if(!result.canceled)toast('Note exported as Markdown.');}catch(error){fail(error);}});
-  q('#deleteNote').addEventListener('click',()=>{if(!confirm('Delete this note?'))return;data.notes=data.notes.filter(n=>n.id!==selected.id);selectedNoteId=data.notes[0]?.id||null;persist();renderNotes();});
+  panel.querySelectorAll('[data-open-task]').forEach(b=>b.addEventListener('click',()=>{taskFilter='all';taskSearch=data.tasks.find(t=>t.id===b.dataset.openTask)?.title||'';taskCategory='all';switchView('tasks');}));
+  q('#deleteNote').addEventListener('click',()=>{if(!confirm('Delete this note?'))return;data.tasks.forEach(t=>{if(t.noteId===selected.id)t.noteId='';});data.notes=data.notes.filter(n=>n.id!==selected.id);selectedNoteId=data.notes[0]?.id||null;persist();renderNotes();});
 }
 function selectNote(noteId){flushNoteEdits();selectedNoteId=noteId;renderNotes();}
 function updateNoteCount(){const el=q('#noteCount');if(el){const body=q('#noteBody')?.value||'';el.textContent=` · ${body.trim()?body.trim().split(/\s+/).length:0} words`;}}
@@ -390,7 +469,7 @@ async function refreshStats(){
 }
 function renderShare(){
   panel.innerHTML=`${heading('CONNECT YOUR DEVICES','LokiShare','Send files between Windows and your phone on the same private Wi-Fi. No cloud required.')}
-    <section class="share-intro"><span class="share-live">${icon('share')} ENCRYPTED LOCAL FILE TRANSFER · v0.8.0</span><h2>Your files. Your devices.<br><strong>One local connection.</strong></h2><p>Start a secure sharing session, discover your PC if available, and verify QR + approval. Android can retry interrupted downloads while the app remains open.</p><div class="share-steps"><span>① Start Windows host</span><span>② Scan QR with Android app</span><span>③ Approve matching number</span><span>④ Transfer directly</span></div></section>
+    <section class="share-intro"><span class="share-live">${icon('share')} ENCRYPTED LOCAL FILE TRANSFER · v0.9.0</span><h2>Your files. Your devices.<br><strong>One local connection.</strong></h2><p>Start a secure sharing session, discover your PC if available, and verify QR + approval. Android can retry interrupted downloads while the app remains open.</p><div class="share-steps"><span>① Start Windows host</span><span>② Scan QR with Android app</span><span>③ Approve matching number</span><span>④ Transfer directly</span></div></section>
     <div class="share-layout"><div>
       <section class="panel share-card"><div class="section-header"><h3>Connection</h3><span class="share-badge" id="shareBadge">Offline</span></div>
       <p class="muted share-info">Choose the private network connected to your phone. LokiShare starts only when you click Start. Optional nearby-PC discovery broadcasts the host name and local address, <strong>not</strong> the QR pairing secret.</p>
@@ -478,7 +557,7 @@ function renderSettings(){
     <section class="panel setting-card"><div class="setting-line"><div><h3>Local backups</h3><p>Tasks, categories, notes, and settings are saved locally. Export a JSON backup or restore an earlier backup.</p></div><div style="display:flex;gap:9px"><button class="button" id="exportBackup">${icon('download')} Export</button><button class="button button-ghost" id="importBackup">${icon('upload')} Restore</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Version & updates</h3><p>Installed version: <strong>v${escapeHtml(info.version)}</strong>. New Windows installers update over the existing installation. GitHub Releases are publicly available without an app signing secret.</p><p id="updateMessage" class="fine-print"></p></div><div style="display:flex;gap:9px"><button class="button" id="checkUpdate">${icon('refresh')} Check Updates</button><button class="button button-ghost" id="releasePage">${icon('external')} Releases</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Your storage</h3><p>Saved data folder: <strong>${escapeHtml(info.dataDirectory||'Local app data')}</strong></p><p>Files and notes stay on your computer unless you export or share them.</p></div><button class="button button-ghost" id="openDataFolder">${icon('folder')} Open Folder</button></div></section>
-    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.8.0. LokiShare runs only when enabled and uses local HTTPS.</div>`;
+    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.9.0. LokiShare runs only when enabled and uses local HTTPS.</div>`;
   q('#nameForm').addEventListener('submit',e=>{e.preventDefault();data.settings.displayName=q('#displayName').value.trim().slice(0,50)||'Creator';persist(true);renderSettings();});
   panel.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>{data.settings.accent=btn.dataset.accent;applyAccent();persist(true);renderSettings();}));
   q('#remindersEnabled').addEventListener('change',e=>{data.settings.reminders=e.target.checked;persist(true);});
@@ -522,7 +601,7 @@ function renderPaletteResults() {
   const query = paletteQuery.trim().toLowerCase();
   const matches = (s) => s.toLowerCase().includes(query);
   paletteItems = [
-    ...Object.entries(pages).map(([view,title])=>({label:title,kind:'Module',view,icon:view==='home'?'home':view==='monitor'?'activity':view==='files'?'folder':view==='tasks'?'tasks':view==='notes'?'notes':'settings'})),
+    ...Object.entries(pages).map(([view,title])=>({label:title,kind:'Module',view,icon:view==='home'?'home':view==='planner'?'calendar':view==='monitor'?'activity':view==='files'?'folder':view==='tasks'?'tasks':view==='notes'?'notes':'settings'})),
     ...data.notes.map(note=>({label:note.title||'Untitled note',kind:'Note',noteId:note.id,icon:'notes'})),
     ...data.tasks.map(task=>({label:task.title,kind:task.completed?'Completed task':'Task',taskId:task.id,icon:'tasks'}))
   ].filter(item=>matches(item.label)||matches(item.kind)).slice(0,12);

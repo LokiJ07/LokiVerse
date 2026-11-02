@@ -1,5 +1,17 @@
 # Changelog
 
+## v0.9.0 — Workspace 2.0 (2026-11-02)
+
+- Added seven-day Weekly Planner with local calendar navigation, backlog management and in-week scheduling.
+- Added daily, weekly and monthly repeating tasks with timezone-stable date calculations, month-end handling and duplicate-next-occurrence prevention.
+- Added full inline task editor for dates, times, priority, categories, repeat schedule and linked LokiNotes.
+- Added task ↔ LokiNotes navigation, and safely clear broken task links when deleting a note.
+- Added focused home dashboard summary for the next seven days and overdue work.
+- Maintained compatibility with existing workspace backups and app/installer identities. Android versionName/code bumped only; LokiShare security and workflows preserved.
+- Added 7 Node regression tests (39 total), plus Chromium UI smoke checks.
+
+
+
 ## v0.8.0 — Ultimate Desktop Experience (2026-11-02)
 
 - Added LokiFiles Storage Insights with 10,000-entry/10-level bounded read-only scans, category sizes, largest files, CSV export and symlink guard.

@@ -8,6 +8,8 @@ const { compareVersions, isWithinFolder } = require('./shared/logic.cjs');
 const { createStorage } = require('./shared/storage.cjs');
 const { createFileOps } = require('./shared/fileops.cjs');
 const { dueReminders } = require('./shared/reminders.cjs');
+const { toggleCompleted, validDate } = require('./shared/planner.cjs');
+const { normalizeData } = require('./shared/logic.cjs');
 const { createLokiShare, listPrivateInterfaces } = require('./shared/lokishare.cjs');
 const { createDiscoveryBroadcaster } = require('./shared/discovery.cjs');
 const { folderInsights, textPreview, summaryCSV, telemetryCSV } = require('./shared/desktop-tools.cjs');
@@ -94,6 +96,16 @@ const safeHandle = (name, fn) => ipcMain.handle(name, (_, ...args) => fn(...args
 function registerHandlers() {
   safeHandle('app:getInfo', () => ({ version: app.getVersion(), repository: RELEASE_REPOSITORY, dataDirectory: app.getPath('userData') }));
   safeHandle('data:load', readData);
+  // A single authoritative completion operation creates one next recurrence.
+  // Renderer only receives normalized data; no filesystem access is exposed.
+  safeHandle('planner:toggleTask', (tasks, taskId, today, nextId) => {
+    if (!Array.isArray(tasks) || tasks.length > 5000 || !validDate(today) ||
+        typeof taskId !== 'string' || taskId.length > 100 ||
+        typeof nextId !== 'string' || nextId.length > 100 || !nextId) throw new Error('Invalid planner request.');
+    const cleanTasks=normalizeData({tasks}).tasks;
+    const change=toggleCompleted(cleanTasks,taskId,today,()=>nextId);
+    return {tasks:cleanTasks, next:change.next ? change.next.id : null};
+  });
   safeHandle('data:recoveryStatus', () => { const message = workspaceRecovery; workspaceRecovery = null; return message; });
   safeHandle('app:completeClose', async wasSaved => {
     if (!waitingForClose) return false;

@@ -1,4 +1,26 @@
-# LokiVerse v0.8.0 — QA Checklist
+# LokiVerse v0.9.0 — Quality Assurance
+
+## Workspace 2.0
+
+- [ ] Upgrade over v0.8.0 **without uninstalling** and confirm your old tasks, notes, preferences, and LokiShare security identity persist.
+- [ ] Export backup before upgrading; verify restoring a test backup retains recurrence and linked-note IDs.
+- [ ] Weekly Planner shows Monday–Sunday; previous/next week and This week work.
+- [ ] Creating a task from a specific day in Planner prefills that date.
+- [ ] Unscheduled tasks can be assigned to a day; Carryover items can be edited.
+- [ ] Create repeating daily, weekly and monthly tasks; complete one; confirm exactly one next future occurrence.
+- [ ] Undo then complete the same occurrence again; ensure no duplicate is produced.
+- [ ] Edit task priority, title, category, date, time, recurrence and linked note.
+- [ ] Linked task opens a note; linked note shows its pending tasks; delete note and confirm tasks remain.
+- [ ] Search/filters, reminders, data autosave, reopen app, and import/export still work.
+
+## Existing modules
+
+- [ ] LokiFiles root-scoped operations, Storage Insights, safe preview, and CSV export.
+- [ ] SystemPulse session graphs and CSV export.
+- [ ] LokiShare HTTPS pairing, Android QR, upload/download, cancellation, and history.
+- [ ] Windows and Android CI jobs, tagged release and installer file names.
+
+Automation is not a substitute for real Windows/Android device testing. Android TEST signing may change between CI runs; do not disable system security to bypass installer warnings.
 
 ## v0.8.0 desktop additions
 

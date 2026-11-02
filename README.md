@@ -1,66 +1,74 @@
-# LokiVerse v0.8.0 — Ultimate Desktop Experience 💜
+# LokiVerse v0.9.0 — Workspace 2.0 💜
 
-**Windows:** LokiVerse, a local-first Electron desktop workspace for tasks, notes, file tools, monitoring and secure LokiShare.  
+**Windows:** LokiVerse, a local-first Electron desktop workspace for tasks, notes, a weekly planner, file tools, system monitoring and secure LokiShare.  
 **Android:** Native LokiShare companion, with approved HTTPS pairing and certificate pinning.  
-**License:** MIT. **No account or cloud sync required** for local productivity modules.
+**License:** MIT. The productivity tools require no account, cloud service or subscription.
 
-## What's new in v0.8.0
+## New in v0.9.0
 
-### LokiFiles — Storage Insights and text preview
+### Weekly Planner
 
-- **Storage Insights:** a user-initiated, read-only breakdown of category counts and sizes; top 10 largest files; total scanned bytes; exportable CSV. Only scans the **explicitly selected root folder**, with a maximum of **10,000 entries** and **10 directory levels**. If this limit is reached, figures are labelled *partial*. Symlink escapes are never followed. Results are a snapshot, not an ongoing monitor.
-- **Safe text preview:** read-only rendering of selected `.txt`, `.md`, `.json`, `.csv`, `.log`, source files, and other listed text extensions. Blocks symlinks and outside-root paths, refuses binary/non-UTF-8 content and files larger than **128 KiB**. The renderer HTML-escapes content to prevent active scripts; the desktop application does not execute previewed code.
-- Existing deep search, duplicate grouping, metadata inspector, directory creation, rename and **no-overwrite safe copy** remain available. No automatic cleanup/deletion was added.
+- New **Weekly Planner** module on the sidebar, with a Monday–Sunday calendar, a “This week” shortcut, and previous/next week navigation (up to 52 weeks in either direction).
+- Show scheduled tasks by day and completion state; quick-create tasks for a selected date.
+- Separate **Carryover** panel for overdue tasks and **Unscheduled** panel where tasks can be assigned to any day in the visible week.
+- The home dashboard now highlights the **next 7 days**, overdue work, tasks due today, and active repeating tasks.
+- All dates use the device's **local calendar date**. The planner is a local view, not an external calendar sync.
 
-### SystemPulse — Session analytics
+### Recurring tasks and full editing
 
-- Collects up to **300 readings** (approx. 15 minutes at 3-second sampling) while the SystemPulse page is visible.
-- Average/peak CPU usage, average/peak RAM usage, sample count, rolling utilization graphs, **Reset session**, and **Export session CSV**.
-- Readings stay in process memory only and are not transmitted to a server. This is not hardware sensor software: temperature, fan speed and GPU usage are **not** provided. Measurements are OS-level approximations, not a replacement for hardware diagnostics.
+- Choose **Never**, **Daily**, **Weekly** or **Monthly** when creating/editing a task. Recurring tasks require a due date.
+- Completing a repeating task marks that occurrence completed and automatically creates **one future occurrence**, preserving title, priority, category, due time and linked note. Missed dates are skipped rather than generating many backlogged tasks.
+- Monthly recurrence preserves its original intended day where possible (e.g., a task created for January 31 repeats on February 28, then March 31).
+- Undoing/re-completing the same occurrence **does not create duplicate future tasks**.
+- Inline task editor now supports title, category, priority, due date, due time, recurrence and linked note.
+- Existing reminder behavior remains **only while LokiVerse is running**; no OS-level background service or offline push was added.
 
-### LokiNotes — Markdown export
+### Linked LokiNotes
 
-- **Export .md** on the current saved note; preserves its title and Markdown body in a standalone UTF-8 file.
-- Existing locally saved folders, pinning, preview and autosave stay unchanged. A full JSON workspace backup is still available in Settings.
+- Optionally link a LokiNote when creating/editing a task.
+- Jump from a task or Planner card directly to the linked note. LokiNotes displays active tasks linked to the note.
+- When a note is deleted, its task links are cleared without deleting the tasks.
 
 ### Compatibility and security
 
-- Windows application ID **`com.lokij.lokiverse`**, installer name, NSIS settings, and `%APPDATA%/LokiVerse` data location are unchanged for in-place upgrades.
-- Android package identity, HTTPS authentication, QR trust check, six-digit approval, transfer protocol, and private signing flow are unchanged. Android versionName is `0.8.0`; versionCode is `10`.
-- Windows installers are **unsigned**. SmartScreen may still show **Unknown publisher**; v0.8.0 does **not** remove that warning. The test Android APK may use a different debug key between workflow runs, requiring test APK reinstall rather than upgrade.
-- This release does **not** add Android features beyond compatibility/versioning changes. The Android scanner still needs physical-device validation on your phone.
+- Windows application ID `com.lokij.lokiverse`, NSIS installer configuration, user-data directory and saved-data filenames are unchanged. Existing v0.8.0 task/note records normalize safely with the new optional fields.
+- Android package ID, signing-secret configuration, secure LokiShare HTTPS pairing and certificate trust protocol are unchanged; only Android versionName/versionCode bump to `0.9.0`/`11`.
+- This version does **not** claim an Android UI or camera scanner fix. Its existing implementation still needs physical-device verification.
+- Windows installer remains **unsigned**. SmartScreen's “Unknown publisher” warning may persist. Android TEST APKs may require reinstalling if their debug signing key differs between CI builds.
 
-## Build and release with GitHub Actions
+## GitHub Actions build and release
 
-1. In your installed LokiVerse, go to **Settings → Export** and save a workspace backup.
-2. Extract this source ZIP and **copy the contents** of `LokiVerse-v0.8.0/` into your existing local `LokiVerse` Git repository, replacing source files. **Do not delete `.git`.**
-3. In that repository, run:
+1. In installed LokiVerse, open **Settings → Export** and save your workspace backup.
+2. Extract this ZIP and copy the **contents of `LokiVerse-v0.9.0/`** into the existing local `LokiVerse` Git repo. Keep the `.git` directory intact.
+3. Run:
 
    ```bash
    npm install
    npm run check
    git add -A
-   git commit -m "feat: LokiVerse v0.8.0 ultimate desktop experience"
+   git commit -m "feat: LokiVerse v0.9.0 workspace 2.0"
    git push origin main
    ```
 
-4. Wait until the Windows and Android CI jobs pass. **Only when `v0.8.0` does not already exist**, push the tag:
+4. Verify both Windows and Android CI jobs pass, then, **only if the tag doesn't exist yet**:
 
    ```bash
-   git tag v0.8.0
-   git push origin v0.8.0
+   git tag v0.9.0
+   git push origin v0.9.0
    ```
 
-5. Download the artifacts from the tagged GitHub Release:
+5. The tag workflow should publish:
 
-   - `LokiVerse-0.8.0-Setup-x64.exe` — NSIS Windows x64 installer (unsigned).
-   - `LokiShare-0.8.0-Android-TEST.apk` — debug-signed Android APK, not update-stable across CI runs.
-   - `LokiShare-0.8.0-Android-SIGNED.apk` — generated only if stable Android signing secrets are fully configured (see `docs/ANDROID_SIGNING.md`).
+   - `LokiVerse-0.9.0-Setup-x64.exe` — unsigned NSIS Windows installer.
+   - `LokiShare-0.9.0-Android-TEST.apk` — debug-signed APK whose signing key is not guaranteed stable between builds.
+   - Optional `LokiShare-0.9.0-Android-SIGNED.apk` only when your protected release-signing secrets are configured (see `docs/ANDROID_SIGNING.md`).
 
-## QA checklist
+## Tests and QA
 
-See [`docs/QA.md`](docs/QA.md). **32/32 desktop/backend Node tests passed** in the source development environment, along with Chromium UI smoke tests on the new tools. **Windows installer generation and Android Gradle build must still be verified in GitHub Actions; physical Windows and Android usage must be tested by you.**
+**39/39 Node.js desktop/backend tests passed locally**, including seven new scheduling, migration and storage-roundtrip tests. Chromium UI smoke tests covered overview, 7-day planner, creating and editing repeating tasks, linked notes, completing tasks, and assigning dates, without JavaScript exceptions.
 
-## No secret in the public repository
+These tests **do not** prove the Windows installer or Android APK builds work; GitHub Actions must compile them. Test the in-place Windows update on your actual PC and verify your old tasks/notes remain after upgrading. See `docs/QA.md`.
 
-The Android signing instructions do not include your personal keystore. Never upload an Android release signing key or passwords to a public repository. Windows builds require no custom signing secret but remain unsigned until a legitimate code signing solution is configured.
+## Public repo safety
+
+Never commit a release signing keystore, signing passwords or secret API keys. The Android TEST APK is still distinct from a stable release-signed APK. Windows installer upgrades remain configured to reuse the same application identity, but Microsoft Defender SmartScreen reputation is a separate issue.

@@ -1,5 +1,6 @@
 'use strict';
 const path = require('node:path');
+const { validDate, FREQUENCIES } = require('./planner.cjs');
 
 function trimText(value, max) {
   return typeof value === 'string' ? value.slice(0, max) : '';
@@ -13,10 +14,15 @@ function normalizeData(raw) {
       id: trimText(x.id, 100), title: trimText(x.title, 240),
       completed: x.completed === true,
       priority: ['Low','Normal','High'].includes(x.priority) ? x.priority : 'Normal',
-      due: /^\d{4}-\d{2}-\d{2}$/.test(x.due || '') ? x.due : '',
+      due: validDate(x.due) ? x.due : '',
       createdAt: trimText(x.createdAt, 40),
       category: trimText(x.category, 40) || 'General',
-      dueTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(x.dueTime || '') ? x.dueTime : ''
+      dueTime: /^([01]\d|2[0-3]):[0-5]\d$/.test(x.dueTime || '') ? x.dueTime : '',
+      recurrence: FREQUENCIES.includes(x.recurrence) ? x.recurrence : 'none',
+      recurrenceDay: Number.isInteger(x.recurrenceDay) && x.recurrenceDay >= 1 && x.recurrenceDay <= 31 ? x.recurrenceDay : (validDate(x.due) ? Number(x.due.slice(8)) : 0),
+      noteId: trimText(x.noteId, 100),
+      completedAt: trimText(x.completedAt, 40),
+      nextTaskId: trimText(x.nextTaskId, 100)
     })).filter(x => x.title),
     notes: notes.filter(x => x && typeof x === 'object' && typeof x.id === 'string').map(x => ({
       id: trimText(x.id, 100), title: trimText(x.title, 140),
