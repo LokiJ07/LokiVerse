@@ -93,7 +93,19 @@ final class PinnedClient {
         }
         return result;
     }
-    private JSONObject get(String route) throws Exception {HttpsURLConnection c=open(route,"GET");try{return new JSONObject(read(c));}finally{c.disconnect();}}
+    private JSONObject get(String route) throws Exception {
+        // One bounded retry for idempotent metadata GETs on a transient timeout.
+        // NEVER retry uploads automatically: the server may have already saved them.
+        for(int attempt=0;attempt<2;attempt++) {
+            HttpsURLConnection c=open(route,"GET");
+            try {return new JSONObject(read(c));}
+            catch(java.net.SocketTimeoutException timeout) {
+                if(attempt==1)throw timeout;
+                Thread.sleep(350);
+            } finally {c.disconnect();}
+        }
+        throw new Exception("Unable to load file list.");
+    }
     private JSONObject post(String route,JSONObject body) throws Exception {
         HttpsURLConnection c=open(route,"POST");c.setDoOutput(true);c.setRequestProperty("Content-Type","application/json");
         byte[] data=body.toString().getBytes(StandardCharsets.UTF_8);c.setFixedLengthStreamingMode(data.length);

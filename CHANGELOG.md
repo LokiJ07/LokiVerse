@@ -1,46 +1,16 @@
 # Changelog
 
-## v0.5.0 — Professional Ecosystem Update
+## v0.6.0 — Smart Device Ecosystem (2026-11-02)
 
-- Desktop: persistent capped local transfer history, totals by direction, filterable Transfer Center, Cancel Transfer and Clear Finished controls. `lokishare-transfer-history.json` is stored separately from the workspace backup and never includes full paths, cookies, passwords, join secrets, or certificate keys.
-- Desktop transfer protocol: cancel active uploads/downloads, retain transfer statuses when sharing stops, remove unfinished `.part` uploads, preserve original files and no-overwrite behavior.
-- Android: cancellable HTTPS upload/download progress, sequential 20-file batch uploads, percent indicator, private recent-activity list and Clear Activity button.
-- Kept v0.4.x HTTPS certificate pinning, pairing and Android SDK/Kotlin CI fixes, app identities and local task/note storage unchanged.
-- Added Node tests for persisted transfer history and clean in-progress cancellation.
-- **Not verified on a physical device yet:** GitHub Actions native builds, Android camera/scanner stability, and real device transfer cancellation.
+- Added optional Windows LAN discovery UDP beacon (host name/local IP/port only, port 43961). No trusted discovery or credential transmission; QR, fingerprint pin, and user approval still mandatory.
+- Added Android time-limited **Find nearby LokiVerse PCs** search and unverified-results guidance, with QR fallback.
+- Added opt-in Android notification permission/transfer completion alerts, and desktop background completion alerts.
+- Added current-speed readout during Android transfers and an improved Android pairing screen.
+- Added LokiFiles metadata inspector with no background file content reading.
+- Kept historical data, app identity, secure transfer restrictions, signed-APK limitations and cancellation semantics of v0.5.0.
 
+## v0.5.0 — Professional Ecosystem
 
-## v0.4.2 — Android Kotlin Gradle dependency fix
+- Persistent transfer history and progress; cancellation and partial-upload cleanup; improved Android progress and local activity.
 
-- Aligned Kotlin runtime artifacts using `org.jetbrains.kotlin:kotlin-bom:1.8.22` to resolve `checkDebugDuplicateClasses` errors caused by older transitive JDK7/JDK8 stdlib modules.
-- Added `:app:verifyKotlinRuntimeAlignment` to both CI and release workflows; CI now checks resolved versions before building the debug APK.
-- Updated release asset naming to use the Git tag, instead of hard-coding a prior Android APK version.
-- Retained the Android SDK 35 setup fix, QR scanner improvements, Windows app identity, local data and HTTPS pairing protocol.
-- Bumped Windows version to 0.4.2 and Android versionName/versionCode to 0.4.2/6.
-- Android APK build and on-device camera test still require GitHub Actions / physical device verification.
-
-
-## v0.4.1 — Android camera scanner stability hotfix
-
-- Migrated Android QR scanner to modern `ScanContract` / Activity Result API.
-- Explicit camera permission and no-camera handling; scan-launch errors surface as usable messages.
-- Unlocked camera orientation and explicitly declared ZXing CaptureActivity in app manifest.
-- Basic QR payload validation and Android JVM regression tests; strict PinnedClient HTTPS checks unchanged.
-- Updated CI and release workflows to run Android tests before APK packaging.
-- Preserved Windows app ID, NSIS installer identity, local data layout, pairing protocol and certificate pinning.
-- **Android TEST APK is not signing-stable**; do not promise no-uninstall updates.
-- Real-device crash resolution requires a new Android build and device-level verification. Attach an `adb logcat` crash trace if force stop persists.
-
-## v0.4.0 — Secure LokiShare + Native Android Companion (source preview)
-
-- Switched temporary LokiShare listener from HTTP to HTTPS, with independent TLS identity generated on the PC on first use.
-- Native Android companion project under `android-companion`, with QR pairing, SHA-256 certificate pinning, explicit PC approval, file sending and scoped downloads.
-- Secure HttpOnly SameSite=Strict session cookies, refreshed device revocation, existing origin checks and file-boundary protections.
-- Additional TLS persistence and signature-verification regression test.
-- Android CI hotfix: use `android-actions/setup-android@v4` and install API 35/build-tools explicitly (legacy `tools` no longer available). Applied to both CI and tag release workflows.
-- GitHub Actions two-platform CI and release: Windows NSIS installer and clearly marked **TEST ONLY** Android debug APK (Android debug signing differs per runner).
-- Existing LokiVerse data and Windows installer identities remain unchanged.
-
-**Compatibility:** v0.3.0 used cleartext HTTP; v0.4.0 uses HTTPS. The v0.3.0 browser QR is now replaced by a native Android companion QR. Standard browsers need to trust a self-signed certificate manually and are not the preferred path. End-to-end encrypted file contents are only guaranteed between the paired Android app and Windows host, not past either endpoint.
-
-**Verification:** 19 automated Node tests passed locally. Actual Windows NSIS packaging and Android Gradle APK compilation must be checked on GitHub Actions, then tested on Windows/Android hardware.
+Previous version notes are retained in the GitHub release history.

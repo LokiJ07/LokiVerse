@@ -1,24 +1,12 @@
-# LokiVerse v0.4.0 release checklist
+# Releasing LokiVerse v0.6.0
 
-1. Back up existing notes/tasks in installed Windows LokiVerse.
-2. Replace source files in the SAME Git repository, keeping `.git` untouched.
-3. Run `npm run check`, then `git add -A && git commit -m "feat: v0.4.0 secure LokiShare" && git push origin main`.
-4. In GitHub Actions verify BOTH jobs passed: Windows verify-and-build AND Android companion build.
-5. Only then `git tag v0.4.0 && git push origin v0.4.0`.
-6. Watch release workflow: `windows-release` first, `android-test-release` second.
-7. Download `LokiVerse-0.4.0-Setup-x64.exe` and install it **over** the existing Windows version (no manual uninstall). Verify saved tasks/notes.
-8. Install `LokiShare-0.4.0-Android-TEST.apk` as a TEST-only APK. Do **not** promise stable APK updates: CI debug signing is not persistent between runs.
-9. Pair on the same private network using the companion QR scanner, compare six digits and approve. Test both upload and download, verify rejection of unknown devices and revoke.
-10. If Android Gradle build fails, do not publish the Android component as ready. Diagnose the Android job log and patch before tagging a new version; never move an already-published tag.
+1. Export a backup from the installed Windows app.
+2. Copy v0.6.0 source over your existing repo; preserve `.git`.
+3. `npm run check` and push `main` changes; verify Windows and Android CI green.
+4. Create and push immutable tag `v0.6.0` only if it does not already exist.
+5. Confirm release workflow publishes Windows exe and Android TEST APK with checksums.
+6. Install Windows v0.6.0 over v0.5.0; confirm notes and tasks preserved.
+7. Test QR pairing, approval, transfers, cancellation, optional discovery and notifications on real devices.
+8. NEVER commit signing keys/passwords, or assume a TEST APK can upgrade without uninstalling.
 
-**Do not** publish any personal `.jks`, `.keystore`, private key, passwords, real QR pairing screenshots or API tokens.
-
-## Android duplicate-class hotfix (v0.4.2)
-
-The Android module uses Kotlin BOM 1.8.22 to align `kotlin-stdlib`,
-`kotlin-stdlib-jdk7`, and `kotlin-stdlib-jdk8` pulled by dependencies.
-Both Android workflows run `:app:verifyKotlinRuntimeAlignment` before tests
-and assembling the debug test APK. If CI fails at this task, examine the
-resolved debug runtime classpath; do not disable the duplicate-class check.
-Release a new `v0.4.2` tag only after both CI jobs pass. Do not move old tags.
-
+See `docs/ANDROID_SIGNING.md` for future release-signing requirements.

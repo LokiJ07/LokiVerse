@@ -9,6 +9,7 @@ const { createStorage } = require('./shared/storage.cjs');
 const { createFileOps } = require('./shared/fileops.cjs');
 const { dueReminders } = require('./shared/reminders.cjs');
 const { createLokiShare, listPrivateInterfaces } = require('./shared/lokishare.cjs');
+const { createDiscoveryBroadcaster } = require('./shared/discovery.cjs');
 
 // Keep this identifier, package.json build.appId, and productName stable across releases.
 // Electron's userData directory is likewise kept stable: installs preserve tasks and notes.
@@ -24,7 +25,22 @@ let closeTimeout = null;
 const notifiedTasks = new Set();
 let reminderBusy = false;
 let remindersLoaded = false;
-const lokiShare = createLokiShare({identityDir: path.join(app.getPath('userData'),'share-security'), historyFile: path.join(app.getPath('userData'),'lokishare-transfer-history.json'), onChange: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('share:changed'); }});
+const discovery = createDiscoveryBroadcaster();
+const desktopAnnouncedTransfers = new Set();
+let desktopTransferBaseline = false;
+function notifyTransferCompletion() {
+  const items=lokiShare.status().transfers || [];
+  if (!desktopTransferBaseline) { items.forEach(t=>desktopAnnouncedTransfers.add(t.id)); desktopTransferBaseline=true;return; }
+  for(const transfer of items){
+    if(transfer.status!=='completed'||desktopAnnouncedTransfers.has(transfer.id))continue;
+    desktopAnnouncedTransfers.add(transfer.id);
+    if(desktopAnnouncedTransfers.size>500)desktopAnnouncedTransfers.clear();
+    if(Notification.isSupported() && mainWindow && !mainWindow.isFocused()){
+      new Notification({title:'LokiVerse · Transfer completed',body:`${transfer.direction==='to PC'?'Received':'Sent'}: ${String(transfer.name||'file').slice(0,120)}`}).show();
+    }
+  }
+}
+const lokiShare = createLokiShare({identityDir: path.join(app.getPath('userData'),'share-security'), historyFile: path.join(app.getPath('userData'),'lokishare-transfer-history.json'), onChange: () => { notifyTransferCompletion(); if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('share:changed'); }});
 
 function dataFile() { return path.join(app.getPath('userData'), 'lokiverse-data.json'); }
 function storage() { return createStorage(dataFile()); }
@@ -200,11 +216,14 @@ function registerHandlers() {
   // Explicitly activated LAN sharing; never expose general filesystem operations over HTTPS.
   safeHandle('share:interfaces', () => listPrivateInterfaces());
   safeHandle('share:status', async () => { await lokiShare.loadHistory();return lokiShare.status(); });
-  safeHandle('share:start', address => {
+  safeHandle('share:start', async address => {
     if (!listPrivateInterfaces().some(entry => entry.address === address)) throw new Error('Select a private LAN/Wi-Fi address.');
-    return lokiShare.start(address);
+    const started=await lokiShare.start(address);
+    // Discovery failures NEVER prevent QR pairing or secure sharing.
+    try {await discovery.start(address,new URL(started.url).port*1);} catch(error){console.warn('LAN discovery unavailable:',error.message);}
+    return started;
   });
-  safeHandle('share:stop', () => lokiShare.stop());
+  safeHandle('share:stop', async () => {discovery.stop();return lokiShare.stop();});
   safeHandle('share:approve', (id, accept) => lokiShare.approve(id, accept === true));
   safeHandle('share:revoke', id => lokiShare.revoke(id));
   safeHandle('share:removeFile', id => lokiShare.removeFile(id));
@@ -304,5 +323,5 @@ app.whenReady().then(() => {
   setInterval(checkReminders, 60000).unref();
   app.on('activate', () => { if (BrowserWindow.getAllWindows().length === 0) createWindow(); });
 }).catch(error => { dialog.showErrorBox('LokiVerse launch error', error.message); app.quit(); });
-app.on('before-quit', () => { lokiShare.stop().catch(() => {}); });
+app.on('before-quit', () => { discovery.stop(); lokiShare.stop().catch(() => {}); });
 app.on('window-all-closed', () => { if (process.platform !== 'darwin') app.quit(); });

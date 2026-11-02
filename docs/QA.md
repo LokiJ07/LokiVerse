@@ -1,40 +1,30 @@
-# LokiVerse v0.5.0 — Upgrade / Transfer QA Checklist
+# LokiVerse v0.6.0 — Test Checklist
 
-## Build
+## CI and release
 
-- [ ] CI: Windows `verify-and-build` green, outputs `.exe`.
-- [ ] CI: Android `android-companion` green, outputs APK with Android unit tests and Kotlin dependency verification.
-- [ ] Tag `v0.5.0`: release workflow green, both assets match tag.
+- [ ] `npm run check` passes locally (includes protocol/discovery tests).
+- [ ] GitHub Actions Windows + Android jobs both green.
+- [ ] `v0.6.0` tag matches both `package.json` and Android `versionName`.
+- [ ] Both release assets and checksums appear in GitHub Releases.
+- [ ] No private signing credentials, user data or session QR values in the repository.
 
-## Windows upgrade
+## Windows regression
 
-- [ ] Export a backup before upgrading. Run v0.5.0 installer **over** installed v0.4.2 without manual uninstall.
-- [ ] Check v0.5.0 in Settings/sidebar; original notes, tasks, themes, workspace and backups intact.
-- [ ] Ensure LokiShare TLS fingerprint persists after upgrade (when using the same user profile).
+- [ ] Export a backup from installed v0.5.0; install v0.6.0 over it without uninstalling.
+- [ ] Original tasks, notes, themes and files remain.
+- [ ] LokiFiles search, create folder, rename, duplicate detection and Details work.
+- [ ] Files outside the selected root remain inaccessible.
+- [ ] Transfer Center history is preserved, pending approvals, revoke, cancellation function.
+- [ ] Start/stop sharing cleanly, repeat without stale sockets.
+- [ ] Windows shows transfer-complete notice when backgrounded (if allowed by OS).
 
-## End-to-end transfer center
+## Android / network
 
-- [ ] Start LokiShare on private Wi-Fi and connect Android after six-digit confirmation.
-- [ ] Choose a receive folder, send phone → PC image (e.g. 2 MB), verify complete and correct contents.
-- [ ] Share a Windows test file, download PC → phone, verify complete and correct contents.
-- [ ] Confirm both directions appear in Windows transfer history, including byte totals and timestamps.
-- [ ] Stop sharing, close/reopen LokiVerse: history remains visible **before** restarting sharing.
-- [ ] Check filter options; `Clear finished` removes finished records but **not** received/shared files.
-- [ ] Start a **large test upload** and cancel from the PC; transfer marked cancelled, no final/`.part` file remains.
-- [ ] Start a **large test download** and cancel from the PC; phone gets interrupted, original Windows file remains.
-- [ ] Cancel from Android; percent stops advancing, buttons return to enabled state; check Windows history. Any partial Android destination file may require manual removal.
-- [ ] Test Android batch of two small files: sequential upload and progress, no unwanted extra selection.
-- [ ] Close and reopen Android: local recent activity remains; `Clear phone activity` clears it.
-
-## Security
-
-- [ ] Pairing approval requires matching 6-digit numbers; rejected devices cannot transfer.
-- [ ] Device revocation blocks new downloads/uploads.
-- [ ] Existing receive-folder files are never overwritten; new files get unique names.
-- [ ] Transfer history does **not** contain absolute paths, tokens, cookies, TLS private keys or file contents.
-- [ ] Test camera QR scan physically; if it force stops, capture `adb logcat` before attributing cause.
-- [ ] Windows SmartScreen Unknown Publisher is **not fixed** by this update; no bypass or certificate changes were made.
-
-## Notes
-
-Android TEST builds are debug-signed. New runner keys may require removing the older Android TEST installation before upgrading; Windows does not require manual uninstall. Android cancellation of a download may leave partial data in its Save As destination; review/remove that file if necessary.
+- [ ] APK builds; launch works; scanner does not force stop (check Logcat if it does).
+- [ ] Optional Nearby Scan finds host on supported LAN. If no host, QR still works.
+- [ ] A discovered host is NOT auto trusted: QR and six-digit Windows approval still required.
+- [ ] Android 13+ transfer-alert permission is optional and transfer still works if denied.
+- [ ] Android upload/download progress, speed, completed notices and Cancel work.
+- [ ] Phone remains open for transfer; no claims of background service or resume.
+- [ ] Firewall/private Wi-Fi limitations documented and tested.
+- [ ] Old TEST APK update may fail due to changed debug signing key; not a regression in Windows installer.

@@ -1,6 +1,11 @@
 package com.lokij.lokishare;
 
 import android.Manifest;
+import android.app.Notification;
+import android.app.NotificationChannel;
+import android.app.NotificationManager;
+import android.os.Build;
+import android.content.Context;
 import android.content.pm.PackageManager;
 import android.util.Log;
 import androidx.activity.ComponentActivity;
@@ -47,7 +52,11 @@ public final class MainActivity extends ComponentActivity {
     private Button cancelTransfer;
     private TransferCancellation currentTransfer;
     private boolean transferBusy=false;
+    private long transferStartedAt=0;
     private EditText inviteInput;
+    private TextView nearbyResults;
+    private Button nearbyButton, notificationButton;
+    private int notificationIndex=100;
     private TextView status, detail, match;
     private Button pairButton,sendButton,refreshButton;
     // Lifecycle-aware scanner result handling. No deprecated IntentIntegrator request code.
@@ -65,6 +74,16 @@ public final class MainActivity extends ComponentActivity {
             } catch (IllegalArgumentException ex) {
                 showError(new Exception(ex.getMessage()));
             }
+        });
+    private final ActivityResultLauncher<String> nearbyPermission =
+        registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+            if(granted)findNearby();
+            else if(nearbyResults!=null)nearbyResults.setText("Nearby-device permission denied. Scan your PC's QR instead; secure transfers remain available where network access is permitted.");
+        });
+    private final ActivityResultLauncher<String> notificationPermission =
+        registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
+            if(notificationButton!=null) notificationButton.setText(granted ? "✓ Transfer notifications enabled" : "Enable transfer notifications");
+            if(!granted)Toast.makeText(this,"Notifications are optional. Transfer works normally.",Toast.LENGTH_SHORT).show();
         });
     private final ActivityResultLauncher<String> cameraPermission =
         registerForActivityResult(new ActivityResultContracts.RequestPermission(), granted -> {
@@ -89,7 +108,7 @@ public final class MainActivity extends ComponentActivity {
             catch(Exception e){handler.post(()->{if(!isFinishing())failed.fail(e);});}});
     }
     private int dp(int value){return Math.round(getResources().getDisplayMetrics().density*value);}
-    @Override public void onCreate(Bundle state){super.onCreate(state);render();handleInvite(getIntent());}
+    @Override public void onCreate(Bundle state){super.onCreate(state);createTransferChannel();render();handleInvite(getIntent());}
     @Override protected void onNewIntent(Intent intent){super.onNewIntent(intent);setIntent(intent);handleInvite(intent);}
     private void handleInvite(Intent intent){
         if(intent!=null&&Intent.ACTION_VIEW.equals(intent.getAction())&&intent.getData()!=null){
@@ -105,8 +124,16 @@ public final class MainActivity extends ComponentActivity {
         ScrollView scroll=new ScrollView(this);scroll.setFillViewport(true);scroll.setBackgroundColor(Color.rgb(11,12,26));
         base=new LinearLayout(this);base.setOrientation(LinearLayout.VERTICAL);base.setPadding(dp(20),dp(26),dp(20),dp(40));scroll.addView(base);setContentView(scroll);
         TextView logo=text("✦ LOKISHARE",28,Color.rgb(207,185,255));logo.setTypeface(null,Typeface.BOLD);block(logo);
-        block(text("Secure transfers between your Android phone and LokiVerse on Windows.",15,Color.rgb(184,185,214)));
-        block(text("① Pair with Windows",20,Color.WHITE));
+        block(text("Your private, encrypted local transfer hub. Pair by QR, send files and track progress.",15,Color.rgb(184,185,214)));
+        TextView securityHint=text("● LOCAL WI-FI  ·  HTTPS PINNING  ·  PC APPROVAL",12,Color.rgb(132,226,204));
+        securityHint.setBackground(background(Color.rgb(27,44,53)));
+        securityHint.setPadding(dp(12),dp(9),dp(12),dp(9));block(securityHint);
+        block(text("① Connect securely",20,Color.WHITE));
+        nearbyButton=button("⌁ Find nearby LokiVerse PCs");block(nearbyButton);
+        nearbyResults=text("Optional discovery: find PCs on the same Wi-Fi. Scan the PC's QR to verify its identity.",13,Color.rgb(172,167,213));
+        nearbyResults.setBackground(background(Color.rgb(28,30,52)));
+        nearbyResults.setPadding(dp(13),dp(10),dp(13),dp(10));block(nearbyResults);
+        nearbyButton.setOnClickListener(v->startNearbyScan());
         Button scan=button("📷 Scan pairing QR");block(scan);
         scan.setOnClickListener(v->startScanner());
         inviteInput=new EditText(this);inviteInput.setTextColor(Color.WHITE);inviteInput.setHintTextColor(Color.GRAY);inviteInput.setTextSize(13);inviteInput.setSingleLine(false);inviteInput.setMinLines(2);inviteInput.setHint("Or paste full lokiverse://pair invitation");inviteInput.setBackground(background(Color.rgb(31,32,55)));inviteInput.setPadding(dp(14),dp(10),dp(14),dp(10));block(inviteInput);
@@ -115,6 +142,9 @@ public final class MainActivity extends ComponentActivity {
         status=text("○ Not connected",18,Color.rgb(161,233,222));block(status);
         match=text("The Windows host must approve the matching six-digit code.",15,Color.rgb(214,210,230));block(match);
         detail=text("No cloud account · HTTPS + SHA-256 certificate pinning",12,Color.rgb(150,150,170));block(detail);
+        notificationButton=button("Enable transfer notifications");block(notificationButton);
+        notificationButton.setOnClickListener(v->askNotifications());
+        if(canNotify())notificationButton.setText("✓ Transfer notifications enabled");
         block(text("② Send to Windows",20,Color.WHITE));
         sendButton=button("Select files to send");block(sendButton);sendButton.setEnabled(false);
         sendButton.setOnClickListener(v->{if(transferBusy)return;Intent pick=new Intent(Intent.ACTION_OPEN_DOCUMENT);pick.setType("*/*");pick.addCategory(Intent.CATEGORY_OPENABLE);pick.putExtra(Intent.EXTRA_ALLOW_MULTIPLE,true);startActivityForResult(pick,REQUEST_SEND);});
@@ -133,6 +163,48 @@ public final class MainActivity extends ComponentActivity {
         clear.setOnClickListener(v->{getPreferences(MODE_PRIVATE).edit().remove("transfer_history_v1").apply();renderRecent();});
         renderRecent();
         block(text("Use private Wi-Fi. Every connection is approved by the PC. No files are shared unless you choose them.",12,Color.rgb(157,156,182)));
+    }
+    private void startNearbyScan(){
+        if(Build.VERSION.SDK_INT>=33 && checkSelfPermission(Manifest.permission.NEARBY_WIFI_DEVICES)!=PackageManager.PERMISSION_GRANTED){
+            nearbyPermission.launch(Manifest.permission.NEARBY_WIFI_DEVICES);
+            return;
+        }
+        findNearby();
+    }
+    /** Never trust an unauthenticated LAN beacon as a connection invitation. */
+    private void findNearby(){
+        nearbyButton.setEnabled(false);nearbyResults.setText("Searching this Wi-Fi for nearby LokiVerse hosts…");
+        runAsync(()->NearbyDiscovery.scan(this,6500), results->{
+            nearbyButton.setEnabled(true);
+            if(results.isEmpty()){
+                nearbyResults.setText("No hosts discovered. Check the same Wi-Fi, Windows firewall and Start sharing on the PC. QR pairing still works.");
+            }else{
+                StringBuilder message=new StringBuilder("Nearby PCs (UNVERIFIED):\n");
+                for(String result:results)message.append("• ").append(result).append("\n");
+                message.append("\nFor security, SCAN THAT PC'S QR. Discovery never bypasses verification.");
+                nearbyResults.setText(message.toString());
+            }
+        },error->{nearbyButton.setEnabled(true);nearbyResults.setText("Discovery unavailable: "+error.getMessage()+". Use QR scanning instead.");});
+    }
+    private void createTransferChannel(){
+        NotificationManager manager=(NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
+        if(manager!=null) manager.createNotificationChannel(new NotificationChannel("lokishare_transfers","LokiShare transfers",NotificationManager.IMPORTANCE_DEFAULT));
+    }
+    private boolean canNotify(){return Build.VERSION.SDK_INT<33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)==PackageManager.PERMISSION_GRANTED;}
+    private void askNotifications(){
+        if(Build.VERSION.SDK_INT>=33&&!canNotify())notificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS);
+        else{notificationButton.setText("✓ Transfer notifications enabled");Toast.makeText(this,"Transfer alerts are enabled.",Toast.LENGTH_SHORT).show();}
+    }
+    private void notifyDone(String title,String description){
+        if(!canNotify())return;
+        NotificationManager manager=(NotificationManager)getSystemService(Context.NOTIFICATION_SERVICE);
+        if(manager==null)return;
+        try {
+            Notification n=new Notification.Builder(this,"lokishare_transfers")
+                .setSmallIcon(android.R.drawable.ic_dialog_info)
+                .setContentTitle(title).setContentText(description).setAutoCancel(true).build();
+            manager.notify(notificationIndex++,n);
+        }catch(SecurityException ignored) { /* Optional system permission can change while app runs. */ }
     }
     /** Fail gracefully on devices without a usable camera, or when launch is blocked. */
     private void startScanner() {
@@ -176,13 +248,15 @@ public final class MainActivity extends ComponentActivity {
         runAsync(()->client.requestPair(),code->{waiting=true;match.setText("MATCH ON WINDOWS: "+code);status.setText("Waiting for Windows approval…");handler.postDelayed(pollTask,1500);},error->{pairButton.setEnabled(true);showError(error);});
     }
     private void beginTransfer() {
-        transferBusy=true;currentTransfer=new TransferCancellation();transferProgress.setProgress(0);
+        transferBusy=true;transferStartedAt=android.os.SystemClock.elapsedRealtime();currentTransfer=new TransferCancellation();transferProgress.setProgress(0);
         cancelTransfer.setEnabled(true);sendButton.setEnabled(false);refreshButton.setEnabled(false);
     }
     private void transferUpdate(String label,long done,long total){
         handler.post(()->{if(!isFinishing() && transferBusy){
             transferProgress.setProgress(total>0?(int)Math.min(100,done*100/total):0);
-            detail.setText(label+" · "+(total>0?(done*100/total)+"%":"working…"));
+            long elapsed=Math.max(1,android.os.SystemClock.elapsedRealtime()-transferStartedAt);
+            double speed=(done*1000.0/elapsed)/(1024*1024);
+            detail.setText(label+" · "+(total>0?(done*100/total)+"%":"working…")+String.format(java.util.Locale.US," · %.1f MB/s",speed));
         }});
     }
     private void endTransfer(){
@@ -240,13 +314,13 @@ public final class MainActivity extends ComponentActivity {
                     completed++;
                 }
                 return completed;
-            },count->{endTransfer();detail.setText("✓ Uploaded "+count+" file(s)");rememberTransfer("Sent "+count+" file(s) to Windows");},
+            },count->{endTransfer();detail.setText("✓ Uploaded "+count+" file(s)");rememberTransfer("Sent "+count+" file(s) to Windows");notifyDone("Upload complete","Sent "+count+" file(s) to LokiVerse Windows");},
             error->{boolean cancelled=token.isCancelled();endTransfer();if(cancelled){detail.setText("Transfer cancelled");rememberTransfer("Cancelled phone → PC upload");}else showError(error);});
         }else if(request==REQUEST_SAVE&&data.getData()!=null){
             Uri dest=data.getData();String id=downloadID,name=downloadName;
             beginTransfer();final TransferCancellation token=currentTransfer;
             runAsync(()->{client.download(this,id,dest,(done,total)->transferUpdate("Downloading "+name,done,total),token);return name;},
-            title->{endTransfer();transferProgress.setProgress(100);detail.setText("✓ Saved "+title);rememberTransfer("Downloaded "+title);},
+            title->{endTransfer();transferProgress.setProgress(100);detail.setText("✓ Saved "+title);rememberTransfer("Downloaded "+title);notifyDone("Download complete",title);},
             error->{boolean cancelled=token.isCancelled();endTransfer();if(cancelled){detail.setText("Download cancelled. The selected destination may contain a partial file.");rememberTransfer("Cancelled download of "+name);}else showError(error);});
         }
     }

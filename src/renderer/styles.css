@@ -142,3 +142,7 @@ body[data-accent="sunset"]{--accent:#ff8bad;--accent-soft:#ff8bad24;--accent-bri
 .transfer-state.completed{color:#8be5bd}.transfer-state.cancelled,.transfer-state.interrupted,.transfer-state.failed{color:#ffafbe}.transfer-state.transferring{color:#aac4ff}
 #shareHistoryFilter{min-width:126px;max-width:210px;flex:1}
 #shareHistoryWarning{margin:6px 0 12px}
+
+/* LokiFiles 3.0 metadata inspector: content never parsed until user opens it. */
+.file-inspector{margin:16px 0 0;padding:16px 18px;border:1px solid rgba(152,129,255,.28);border-radius:14px;background:rgba(84,66,147,.14);color:var(--text,#eee);line-height:1.7;overflow-wrap:anywhere}
+.file-inspector strong{display:block;font-size:15px}.file-inspector small{opacity:.74}
