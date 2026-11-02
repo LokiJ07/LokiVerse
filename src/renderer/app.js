@@ -43,10 +43,14 @@ let fileQuery = '';
 let fileSort = 'name';
 let fileType = 'all';
 let fileScan = null;
+let fileInsights = null;
+let filePreview = null;
 let fileResultsCache = [];
 let system = null;
 let cpuHistory = [];
 let ramHistory = [];
+let monitorSamples = [];
+let monitorRefreshBusy = false;
 let monitorTimer = null;
 let shareTimer = null;
 let shareQRURL = null;
@@ -209,7 +213,7 @@ function renderNotes() {
   const selected=data.notes.find(n=>n.id===selectedNoteId);
   panel.innerHTML=`${heading('CAPTURE · ORGANIZE · CREATE','LokiNotes','Notes with folders, pinned ideas, Markdown formatting and safe local preview.',`<button class="button button-primary" id="newNote">${icon('plus')} New note</button>`)}
     <div class="note-layout"><section class="panel note-sidebar"><input class="field search" id="noteSearch" type="search" placeholder="Search notes..." value="${escapeHtml(noteQuery)}"><select id="noteFolderFilter" class="field note-folder-select">${categoryChoices(data.notes.map(n=>({category:n.folder||'General'})),noteFolder,'All folders')}</select><div id="noteList">${noteListHtml()}</div></section>
-    <section class="panel note-editor">${selected?`<div class="note-editor-top"><input id="noteTitle" maxlength="140" placeholder="Untitled note" value="${escapeHtml(selected.title)}"><button class="button button-ghost" id="pinNote">${selected.pinned?'✦ Pinned':'☆ Pin'}</button></div><div class="note-tools"><label class="compact-label">Folder<input id="noteFolder" class="field" maxlength="40" value="${escapeHtml(selected.folder||'General')}" placeholder="Folder name"></label><div class="note-tabs"><button id="editNote" class="filter-chip ${!notePreview?'active':''}">Edit</button><button id="previewNote" class="filter-chip ${notePreview?'active':''}">Preview</button></div></div><div id="markdownToolbar" class="markdown-toolbar" ${notePreview?'hidden':''}><button class="format-btn" data-format="bold" title="Bold">B</button><button class="format-btn" data-format="italic" title="Italic"><i>I</i></button><button class="format-btn" data-format="heading" title="Heading">H1</button><button class="format-btn" data-format="bullet" title="Bullet">• List</button><span class="fine-print">Markdown supported · **bold**, *italic*, # heading</span></div><textarea id="noteBody" maxlength="100000" placeholder="Let your ideas flow..." ${notePreview?'hidden':''}></textarea><div id="noteRendered" class="markdown-preview" ${!notePreview?'hidden':''}>${renderMarkdown(selected.body)}</div><div class="editor-bottom"><span><span id="noteStatus">Saved locally</span> <span id="noteCount" class="word-count"></span></span><button id="deleteNote" class="button button-danger">${icon('trash')} Delete</button></div>`: `<div class="empty" style="margin:auto">${icon('notes',32)}<strong>Your thoughts, your universe.</strong><p>Create a note or select one.</p></div>`}</section></div>`;
+    <section class="panel note-editor">${selected?`<div class="note-editor-top"><input id="noteTitle" maxlength="140" placeholder="Untitled note" value="${escapeHtml(selected.title)}"><button class="button button-ghost" id="pinNote">${selected.pinned?'✦ Pinned':'☆ Pin'}</button></div><div class="note-tools"><label class="compact-label">Folder<input id="noteFolder" class="field" maxlength="40" value="${escapeHtml(selected.folder||'General')}" placeholder="Folder name"></label><div class="note-tabs"><button id="editNote" class="filter-chip ${!notePreview?'active':''}">Edit</button><button id="previewNote" class="filter-chip ${notePreview?'active':''}">Preview</button></div></div><div id="markdownToolbar" class="markdown-toolbar" ${notePreview?'hidden':''}><button class="format-btn" data-format="bold" title="Bold">B</button><button class="format-btn" data-format="italic" title="Italic"><i>I</i></button><button class="format-btn" data-format="heading" title="Heading">H1</button><button class="format-btn" data-format="bullet" title="Bullet">• List</button><span class="fine-print">Markdown supported · **bold**, *italic*, # heading</span></div><textarea id="noteBody" maxlength="100000" placeholder="Let your ideas flow..." ${notePreview?'hidden':''}></textarea><div id="noteRendered" class="markdown-preview" ${!notePreview?'hidden':''}>${renderMarkdown(selected.body)}</div><div class="editor-bottom"><span><span id="noteStatus">Saved locally</span> <span id="noteCount" class="word-count"></span></span><div class="note-export-actions"><button id="exportNoteMarkdown" class="button button-ghost">${icon('download')} Export .md</button><button id="deleteNote" class="button button-danger">${icon('trash')} Delete</button></div></div>`: `<div class="empty" style="margin:auto">${icon('notes',32)}<strong>Your thoughts, your universe.</strong><p>Create a note or select one.</p></div>`}</section></div>`;
   if(selected){q('#noteBody').value=selected.body;updateNoteCount();}
   q('#newNote').addEventListener('click',()=>{
     const note={id:id(),title:'Untitled note',body:'',folder:noteFolder==='all'?'General':noteFolder,pinned:false,updatedAt:new Date().toISOString()};
@@ -235,6 +239,7 @@ function renderNotes() {
     const wrapper=fmt==='bold'?`**${selection}**`:fmt==='italic'?`*${selection}*`:fmt==='heading'?`# ${selection}`:`- ${selection}`;
     area.setRangeText(wrapper,a,b,'select');area.dispatchEvent(new Event('input',{bubbles:true}));area.focus();
   }));
+  q('#exportNoteMarkdown').addEventListener('click',async()=>{try{await flushNoteEdits();const result=await window.loki.exportMarkdown(selected.id);if(!result.canceled)toast('Note exported as Markdown.');}catch(error){fail(error);}});
   q('#deleteNote').addEventListener('click',()=>{if(!confirm('Delete this note?'))return;data.notes=data.notes.filter(n=>n.id!==selected.id);selectedNoteId=data.notes[0]?.id||null;persist();renderNotes();});
 }
 function selectNote(noteId){flushNoteEdits();selectedNoteId=noteId;renderNotes();}
@@ -242,7 +247,7 @@ function updateNoteCount(){const el=q('#noteCount');if(el){const body=q('#noteBo
 function updateNoteList(){const list=q('#noteList');if(!list)return;list.innerHTML=noteListHtml();bindNoteItems();}
 function bindNoteItems(){panel.querySelectorAll('[data-note]').forEach(b=>b.addEventListener('click',()=>selectNote(b.dataset.note)));}
 async function browseFiles(relative='') {
-  try{fileListing=await window.loki.listFiles(relative);fileQuery='';fileScan=null;if(currentView==='files')renderFiles();}
+  try{fileListing=await window.loki.listFiles(relative);fileQuery='';fileScan=null;filePreview=null;if(currentView==='files')renderFiles();}
   catch(error){fail(error);}
 }
 function matchFileType(item) {
@@ -261,11 +266,11 @@ function sortedFiles(){
     fileSort==='size'?(b.size||0)-(a.size||0):a.name.localeCompare(b.name)));
 }
 function renderFiles(){
-  panel.innerHTML=`${heading('EXPLORE MORE · STAY IN CONTROL','LokiFiles','Browse, search, inspect duplicates, rename, and copy files safely within your chosen folder.',`<button class="button button-primary" id="pickFolder">${icon('folder')} Choose folder</button>`)}
+  panel.innerHTML=`${heading('EXPLORE MORE · STAY IN CONTROL','LokiFiles','Inspect storage, preview text, search duplicates and copy files safely within your chosen folder.',`<button class="button button-primary" id="pickFolder">${icon('folder')} Choose folder</button>`)}
     <section class="panel files-panel"><div class="folder-toolbar"><button class="button button-ghost" id="goParent" ${!fileListing||!fileListing.relative?'disabled':''}>${icon('back')} Up</button><div class="folder-path">${fileListing?escapeHtml(fileListing.root+(fileListing.relative?'\\'+fileListing.relative:'')):'No folder selected'}</div><button class="button button-ghost" id="newFolder" ${!fileListing?'disabled':''}>${icon('plus')} Folder</button></div>
     <div class="file-tools"><input id="fileSearch" class="field flex-field" type="search" placeholder="Search current folder..." value="${escapeHtml(fileQuery)}" ${!fileListing?'disabled':''}><select id="fileType" class="field">${[['all','All types'],['folders','Folders'],['docs','Documents'],['images','Images'],['audio','Audio'],['video','Videos']].map(([val,label])=>`<option value="${val}" ${fileType===val?'selected':''}>${label}</option>`).join('')}</select><select id="fileSort" class="field"><option value="name" ${fileSort==='name'?'selected':''}>Name</option><option value="modified" ${fileSort==='modified'?'selected':''}>Recently modified</option><option value="size" ${fileSort==='size'?'selected':''}>Largest</option></select></div>
-    <div class="file-tools scan-tools"><button class="button button-ghost" id="deepSearch" ${!fileListing?'disabled':''}>${icon('search')} Search subfolders</button><button class="button button-ghost" id="findDuplicates" ${!fileListing?'disabled':''}>${icon('harddrive')} Find duplicates</button><button class="button button-ghost" id="clearScan" ${!fileScan?'disabled':''}>Current folder</button><span class="fine-print">Scans selected root only · capped to protect system performance</span></div><div id="fileResults">${fileListing?fileResultsHtml():emptyState('folder','Choose a folder to get started')}</div><div id="fileInspector" class="file-inspector" role="status">${fileListing?'Select Details beside a file to inspect its metadata without opening it.':'Select a folder to inspect its files.'}</div></section>`;
-  q('#pickFolder').addEventListener('click',async()=>{try{const result=await window.loki.selectFolder();if(!result.canceled)await browseFiles('');}catch(e){fail(e)}});
+    <div class="file-tools scan-tools"><button class="button button-ghost" id="deepSearch" ${!fileListing?'disabled':''}>${icon('search')} Search subfolders</button><button class="button button-ghost" id="findDuplicates" ${!fileListing?'disabled':''}>${icon('harddrive')} Find duplicates</button><button class="button button-ghost" id="storageInsights" ${!fileListing?'disabled':''}>${icon('activity')} Storage insights</button><button class="button button-ghost" id="clearScan" ${!fileScan?'disabled':''}>Current folder</button><span class="fine-print">Scans selected root only · capped to protect system performance</span></div><div id="storageInsightsPanel">${fileInsights?storageInsightsHtml():''}</div><div id="fileResults">${fileListing?fileResultsHtml():emptyState('folder','Choose a folder to get started')}</div><div id="filePreviewPanel" class="file-preview-panel">${filePreview?previewHtml():''}</div><div id="fileInspector" class="file-inspector" role="status">${fileListing?'Select Details beside a file to inspect its metadata without opening it.':'Select a folder to inspect its files.'}</div></section>`;
+  q('#pickFolder').addEventListener('click',async()=>{try{const result=await window.loki.selectFolder();if(!result.canceled){fileInsights=null;await browseFiles('');}}catch(e){fail(e)}});
   q('#goParent').addEventListener('click',()=>{const parts=(fileListing?.relative||'').split(/[\\/]/).filter(Boolean);parts.pop();browseFiles(parts.join('\\'));});
   q('#fileSearch').addEventListener('input',e=>{fileQuery=e.target.value;if(!fileScan)updateFileResults();});
   q('#fileSort').addEventListener('change',e=>{fileSort=e.target.value;updateFileResults();});
@@ -279,8 +284,29 @@ function renderFiles(){
     if(term===null||!term.trim()){toast('Enter a search term first.');return;}await runScan({query:term.trim(),duplicates:false});
   });
   q('#findDuplicates').addEventListener('click',async()=>{await runScan({duplicates:true});});
+  q('#storageInsights').addEventListener('click',async()=>{
+    const target=q('#storageInsightsPanel');if(target)target.innerHTML='<p class="fine-print">Analyzing up to 10,000 entries inside your selected folder…</p>';
+    try{fileInsights=await window.loki.fileInsights();if(currentView==='files'){q('#storageInsightsPanel').innerHTML=storageInsightsHtml();bindInsightActions();}}
+    catch(error){fail(error);if(currentView==='files')q('#storageInsightsPanel').innerHTML='';}
+  });
+  bindInsightActions();
   q('#clearScan').addEventListener('click',()=>{fileScan=null;fileQuery='';renderFiles();});
   bindFileResults();
+}
+function storageInsightsHtml(){
+  if(!fileInsights)return '';
+  const data=fileInsights;const rows=Object.keys(data.counts).filter(k=>data.counts[k]>0).sort((a,b)=>data.sizeByCategory[b]-data.sizeByCategory[a]);
+  return `<section class="insights-card"><div class="insights-heading"><div><span class="eyebrow">LOKIFILES · STORAGE INSIGHTS</span><h3>${data.files.toLocaleString()} files · ${bytes(data.bytes)}</h3><p>${data.folders.toLocaleString()} folders · ${data.scanned.toLocaleString()} scanned · ${data.skipped} skipped${data.truncated?' · PARTIAL SCAN':''}</p></div><button class="button button-ghost" id="exportStorageCSV">${icon('download')} Export CSV</button></div><div class="insights-grid">${rows.length?rows.map(k=>`<div class="insight-row"><strong>${escapeHtml(k)}</strong><small>${data.counts[k]} files</small><div class="insight-progress"><span style="width:${data.bytes?Math.max(1,Math.round(100*data.sizeByCategory[k]/data.bytes)):0}%"></span></div><span>${bytes(data.sizeByCategory[k])}</span></div>`).join(''):'<p class="fine-print">No files found.</p>'}</div><div class="insight-largest"><strong>Largest files found</strong>${data.largest.length?data.largest.slice(0,5).map(item=>`<div class="insight-largest-row"><span title="${escapeHtml(item.relative)}">${escapeHtml(item.name)}</span><span>${bytes(item.size)}</span></div>`).join(''):'<p class="fine-print">No files available.</p>'}</div><p class="fine-print">Local read-only scan, max 10,000 entries / 10 levels. Symlinks outside this folder are skipped. Figures may be partial when limits are reached.</p></section>`;
+}
+function bindInsightActions(){
+  q('#exportStorageCSV')?.addEventListener('click',async()=>{try{const result=await window.loki.exportInsights();if(!result.canceled)toast(result.partial?'Partial storage report exported.':'Storage report exported.');}catch(error){fail(error);}});
+}
+function previewHtml(){
+  if(!filePreview)return '';
+  return `<section class="insights-card"><div class="insights-heading"><div><span class="eyebrow">READ-ONLY TEXT PREVIEW</span><h3>${escapeHtml(filePreview.name)}</h3><p>${escapeHtml(filePreview.relative)} · ${bytes(filePreview.size)}</p></div><button class="button button-ghost" id="closeFilePreview">Close preview</button></div><pre class="text-file-preview">${escapeHtml(filePreview.content)}</pre></section>`;
+}
+async function showPreview(item){
+  try{filePreview=await window.loki.previewFile(item.relative);const target=q('#filePreviewPanel');if(target){target.innerHTML=previewHtml();q('#closeFilePreview')?.addEventListener('click',()=>{filePreview=null;target.innerHTML='';});}}catch(error){fail(error);}
 }
 async function runScan(options){
   const output=q('#fileResults');if(output)output.innerHTML='<div class="scan-loading">Scanning selected folder... Please keep LokiVerse open.</div>';
@@ -294,10 +320,11 @@ function fileResultsHtml(){
   else shown=sortedFiles();
   fileResultsCache=shown;
   const message=fileScan?(fileScan.mode==='duplicates'?`${fileScan.groups.length} duplicate group(s) · ${fileScan.hashed} files hashed`:`${shown.length} matches in selected root`)+` · ${fileScan.scanned} scanned${fileScan.truncated?' · LIMIT REACHED, results partial':''}${fileScan.skipped?' · '+fileScan.skipped+' skipped':''}`:`${fileListing.entries.length} item(s)${fileListing.truncated?' · Showing first 1,500':''}`;
-  return `<div class="scan-summary">${escapeHtml(message)}</div>${shown.length?`<div class="table-scroll"><table class="files-table"><thead><tr><th>NAME</th><th>TYPE / GROUP</th><th>SIZE</th><th>MODIFIED</th><th>ACTIONS</th></tr></thead><tbody>${shown.map((f,i)=>`<tr><td class="name-cell"><span class="file-icon">${icon(f.directory?'folder':'file')}</span><button class="file-open" data-file="${i}" title="${escapeHtml(f.relative)}">${escapeHtml(f.name)}</button>${fileScan?`<small class="file-path-hint">${escapeHtml(f.relative)}</small>`:''}</td><td>${f.duplicateGroup?'Duplicate #'+f.duplicateGroup:f.directory?'Folder':escapeHtml((f.name.split('.').pop()||'File').toUpperCase())}</td><td>${f.directory?'—':bytes(f.size)}</td><td>${niceDate(f.modified)}</td><td><div class="file-actions"><button class="icon-button" data-detail="${i}" title="File details">${icon('search')}</button><button class="icon-button" data-reveal="${i}" title="Show in Explorer">${icon('external')}</button>${!fileScan && !f.directory && !f.symlink?`<button class="icon-button" data-copy="${i}" title="Copy file to another folder">${icon('folder')}</button>`:''}${!fileScan?`<button class="icon-button" data-rename="${i}" title="Rename item">${icon('settings')}</button>`:''}</div></td></tr>`).join('')}</tbody></table></div>`:emptyState('search',fileScan?'No matches found':'No files in this folder')}`;
+  return `<div class="scan-summary">${escapeHtml(message)}</div>${shown.length?`<div class="table-scroll"><table class="files-table"><thead><tr><th>NAME</th><th>TYPE / GROUP</th><th>SIZE</th><th>MODIFIED</th><th>ACTIONS</th></tr></thead><tbody>${shown.map((f,i)=>`<tr><td class="name-cell"><span class="file-icon">${icon(f.directory?'folder':'file')}</span><button class="file-open" data-file="${i}" title="${escapeHtml(f.relative)}">${escapeHtml(f.name)}</button>${fileScan?`<small class="file-path-hint">${escapeHtml(f.relative)}</small>`:''}</td><td>${f.duplicateGroup?'Duplicate #'+f.duplicateGroup:f.directory?'Folder':escapeHtml((f.name.split('.').pop()||'File').toUpperCase())}</td><td>${f.directory?'—':bytes(f.size)}</td><td>${niceDate(f.modified)}</td><td><div class="file-actions"><button class="icon-button" data-detail="${i}" title="File details">${icon('search')}</button><button class="icon-button" data-reveal="${i}" title="Show in Explorer">${icon('external')}</button>${!f.directory?`<button class="icon-button" data-preview="${i}" title="Preview text or code file">${icon('file')}</button>`:''}${!fileScan && !f.directory && !f.symlink?`<button class="icon-button" data-copy="${i}" title="Copy file to another folder">${icon('folder')}</button>`:''}${!fileScan?`<button class="icon-button" data-rename="${i}" title="Rename item">${icon('settings')}</button>`:''}</div></td></tr>`).join('')}</tbody></table></div>`:emptyState('search',fileScan?'No matches found':'No files in this folder')}`;
 }
 function updateFileResults(){const el=q('#fileResults');if(el){el.innerHTML=fileResultsHtml();bindFileResults();}}
 function bindFileResults(){
+  panel.querySelectorAll('[data-preview]').forEach(button=>button.addEventListener('click',()=>{const item=fileResultsCache[Number(button.dataset.preview)];if(item&&!item.directory)showPreview(item); }));
   panel.querySelectorAll('[data-detail]').forEach(button=>button.addEventListener('click',()=>{
     const item=fileResultsCache[Number(button.dataset.detail)];const target=q('#fileInspector');
     if(!item||!target)return;
@@ -331,17 +358,25 @@ function sparkline(points, label){
   return `<svg class="history-chart" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="${escapeHtml(label)} history"><polyline points="${coords}" fill="none" stroke="currentColor" stroke-width="2" vector-effect="non-scaling-stroke"/></svg>`;
 }
 function renderMonitor(){
-  panel.innerHTML=`${heading('LIVE · PRIVATE · LOCAL','SystemPulse','CPU, RAM and primary-drive statistics, refreshed every 3 seconds.',`<span class="pill">${icon('activity',13)} LIVE</span>`)}
+  panel.innerHTML=`${heading('LIVE · PRIVATE · LOCAL','SystemPulse','CPU, RAM, and session analytics refreshed every 3 seconds.',`<button class="button button-ghost" id="exportMonitor" ${!monitorSamples.length?'disabled':''}>${icon('download')} Export session CSV</button>`)}
     <div class="monitor-grid"><div class="panel metric-panel"><span class="eyebrow">CPU UTILIZATION</span><div class="big-number" id="cpuPercent">—<small>%</small></div><div class="progress-track"><div class="progress-fill" id="cpuBar"></div></div><div id="cpuChart" class="chart-wrap">${sparkline(cpuHistory,'CPU')}</div></div><div class="panel metric-panel"><span class="eyebrow">MEMORY USAGE</span><div class="big-number" id="ramPercent">—<small>%</small></div><div class="progress-track"><div class="progress-fill green" id="ramBar"></div></div><div id="ramChart" class="chart-wrap">${sparkline(ramHistory,'RAM')}</div><p class="fine-print" id="ramDetails">Reading memory…</p></div></div>
-    <div class="section-header"><h3>Device insights</h3></div><div class="panel device-insights" id="systemDetails">${emptyState('activity','Gathering system details...')}</div>
+    <div class="section-header"><h3>Session analytics</h3><button class="button button-ghost" id="resetMonitor">Reset session</button></div><div class="session-analytics" id="sessionAnalytics">Gathering live readings…</div><div class="section-header"><h3>Device insights</h3></div><div class="panel device-insights" id="systemDetails">${emptyState('activity','Gathering system details...')}</div>
     <p class="fine-print">Charts show recent sampled utilization while SystemPulse is open. Disk figures cover the drive containing your user folder, not every drive. Temperature/GPU telemetry is not supported.</p>`;
-  refreshStats();monitorTimer=setInterval(()=>{if(currentView==='monitor')refreshStats();},3000);
+  q('#exportMonitor')?.addEventListener('click',async()=>{try{const result=await window.loki.exportMonitorCSV(monitorSamples);if(!result.canceled)toast('SystemPulse session exported.');}catch(error){fail(error);}});
+  q('#resetMonitor')?.addEventListener('click',()=>{if(monitorTimer){clearInterval(monitorTimer);monitorTimer=null;}monitorSamples=[];cpuHistory=[];ramHistory=[];renderMonitor();});
+  refreshStats();monitorTimer=setInterval(()=>{if(currentView==='monitor'&&!monitorRefreshBusy)refreshStats();},3000);
 }
 async function refreshStats(){
+  if(monitorRefreshBusy)return;monitorRefreshBusy=true;
   try{
     const result=await window.loki.stats();if(currentView!=='monitor')return;system=result;
     const cpu=system.cpu==null?null:Math.round(system.cpu),ram=system.memoryTotal?Math.round(100*system.memoryUsed/system.memoryTotal):0;
     if(cpu!==null)cpuHistory.push(cpu);ramHistory.push(ram);cpuHistory=cpuHistory.slice(-40);ramHistory=ramHistory.slice(-40);
+    monitorSamples.push({time:new Date().toISOString(),cpu,ram,memoryUsed:system.memoryUsed});monitorSamples=monitorSamples.slice(-300);
+    const avg=key=>Math.round(monitorSamples.filter(x=>x[key]!==null).reduce((total,x)=>total+(x[key]??0),0)/Math.max(1,monitorSamples.filter(x=>x[key]!==null).length));
+    const max=key=>Math.max(...monitorSamples.map(x=>x[key]??0));
+    const summary=q('#sessionAnalytics');if(summary)summary.innerHTML=`<div class="session-stat"><span>Samples collected</span><strong>${monitorSamples.length} <small>/ 300</small></strong></div><div class="session-stat"><span>Average CPU</span><strong>${avg('cpu')}%</strong><small>Peak ${max('cpu')}%</small></div><div class="session-stat"><span>Average memory</span><strong>${avg('ram')}%</strong><small>Peak ${max('ram')}%</small></div>`;
+    const exportButton=q('#exportMonitor');if(exportButton)exportButton.disabled=false;
     q('#cpuPercent').innerHTML=`${cpu??'—'}<small>%</small>`;q('#cpuBar').style.width=`${cpu||0}%`;
     q('#ramPercent').innerHTML=`${ram}<small>%</small>`;q('#ramBar').style.width=`${ram}%`;
     q('#ramDetails').textContent=`${bytes(system.memoryUsed)} of ${bytes(system.memoryTotal)} in use`;
@@ -351,10 +386,11 @@ async function refreshStats(){
     if(disk){rows.push(['User drive',disk.location],['Drive free / total',`${bytes(disk.free)} free of ${bytes(disk.total)}`]);}
     q('#systemDetails').innerHTML=rows.map(([a,b])=>`<div class="detail-row"><span>${escapeHtml(a)}</span><strong>${escapeHtml(b)}</strong></div>`).join('');
   }catch(error){if(currentView==='monitor')fail(error);}
+  finally{monitorRefreshBusy=false;}
 }
 function renderShare(){
   panel.innerHTML=`${heading('CONNECT YOUR DEVICES','LokiShare','Send files between Windows and your phone on the same private Wi-Fi. No cloud required.')}
-    <section class="share-intro"><span class="share-live">${icon('share')} ENCRYPTED LOCAL FILE TRANSFER · v0.7.0</span><h2>Your files. Your devices.<br><strong>One local connection.</strong></h2><p>Start a secure sharing session, discover your PC if available, and verify QR + approval. Android can retry interrupted downloads while the app remains open.</p><div class="share-steps"><span>① Start Windows host</span><span>② Scan QR with Android app</span><span>③ Approve matching number</span><span>④ Transfer directly</span></div></section>
+    <section class="share-intro"><span class="share-live">${icon('share')} ENCRYPTED LOCAL FILE TRANSFER · v0.8.0</span><h2>Your files. Your devices.<br><strong>One local connection.</strong></h2><p>Start a secure sharing session, discover your PC if available, and verify QR + approval. Android can retry interrupted downloads while the app remains open.</p><div class="share-steps"><span>① Start Windows host</span><span>② Scan QR with Android app</span><span>③ Approve matching number</span><span>④ Transfer directly</span></div></section>
     <div class="share-layout"><div>
       <section class="panel share-card"><div class="section-header"><h3>Connection</h3><span class="share-badge" id="shareBadge">Offline</span></div>
       <p class="muted share-info">Choose the private network connected to your phone. LokiShare starts only when you click Start. Optional nearby-PC discovery broadcasts the host name and local address, <strong>not</strong> the QR pairing secret.</p>
@@ -368,7 +404,7 @@ function renderShare(){
       <section class="panel share-card"><div class="section-header"><h3>Transfer center</h3><span class="share-badge">SAVED LOCALLY</span></div>
       <div class="share-stats"><div><small>Completed</small><strong id="shareCompleted">0</strong></div><div><small>Received</small><strong id="shareReceived">0 B</strong></div><div><small>Sent</small><strong id="shareSent">0 B</strong></div></div>
       <div class="share-controls"><select id="shareHistoryFilter" class="field" aria-label="Filter transfers"><option value="all">All transfers</option><option value="completed">Completed</option><option value="transferring">In progress</option><option value="cancelled">Cancelled</option><option value="failed">Failed / interrupted</option></select><button class="button button-ghost" id="shareClearHistory">Clear finished</button></div><p class="fine-print" id="shareHistoryWarning"></p><div id="shareTransfers" class="share-list"></div></section>
-      <section class="share-security">${icon('shield')} <div><strong>Encrypted Wi-Fi transfers with certificate pinning.</strong><p>v0.7.0 uses HTTPS and a unique local certificate. The Android app verifies the certificate fingerprint from your QR invitation. Browser pairing requires manually trusting the self-signed certificate; prefer the native Android companion. Still use trusted private Wi-Fi.</p></div></section>
+      <section class="share-security">${icon('shield')} <div><strong>Encrypted Wi-Fi transfers with certificate pinning.</strong><p>LokiShare uses HTTPS and a unique local certificate. The Android app verifies the certificate fingerprint from your QR invitation. Browser pairing requires manually trusting the self-signed certificate; prefer the native Android companion. Still use trusted private Wi-Fi.</p></div></section>
     </div></div>`;
   q('#shareStart').addEventListener('click', async()=>{const address=q('#shareInterface').value;if(!address)return toast('Select a private network first.',true);await shareCall(()=>window.loki.shareStart(address));});
   q('#shareStop').addEventListener('click', async()=>{if(!confirm('End this sharing session and disconnect all phones?'))return;shareQRURL=null;await shareCall(()=>window.loki.shareStop());});
@@ -442,7 +478,7 @@ function renderSettings(){
     <section class="panel setting-card"><div class="setting-line"><div><h3>Local backups</h3><p>Tasks, categories, notes, and settings are saved locally. Export a JSON backup or restore an earlier backup.</p></div><div style="display:flex;gap:9px"><button class="button" id="exportBackup">${icon('download')} Export</button><button class="button button-ghost" id="importBackup">${icon('upload')} Restore</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Version & updates</h3><p>Installed version: <strong>v${escapeHtml(info.version)}</strong>. New Windows installers update over the existing installation. GitHub Releases are publicly available without an app signing secret.</p><p id="updateMessage" class="fine-print"></p></div><div style="display:flex;gap:9px"><button class="button" id="checkUpdate">${icon('refresh')} Check Updates</button><button class="button button-ghost" id="releasePage">${icon('external')} Releases</button></div></div></section>
     <section class="panel setting-card"><div class="setting-line"><div><h3>Your storage</h3><p>Saved data folder: <strong>${escapeHtml(info.dataDirectory||'Local app data')}</strong></p><p>Files and notes stay on your computer unless you export or share them.</p></div><button class="button button-ghost" id="openDataFolder">${icon('folder')} Open Folder</button></div></section>
-    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.7.0. LokiShare runs only when enabled and uses local HTTPS.</div>`;
+    <div class="fine-print">LokiVerse Creator Edition · MIT License · No account, telemetry, or cloud sync in v0.8.0. LokiShare runs only when enabled and uses local HTTPS.</div>`;
   q('#nameForm').addEventListener('submit',e=>{e.preventDefault();data.settings.displayName=q('#displayName').value.trim().slice(0,50)||'Creator';persist(true);renderSettings();});
   panel.querySelectorAll('[data-accent]').forEach(btn=>btn.addEventListener('click',()=>{data.settings.accent=btn.dataset.accent;applyAccent();persist(true);renderSettings();}));
   q('#remindersEnabled').addEventListener('change',e=>{data.settings.reminders=e.target.checked;persist(true);});

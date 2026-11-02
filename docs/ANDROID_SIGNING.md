@@ -1,8 +1,8 @@
-# LokiShare v0.7.0 — optional stable Android release signing
+# LokiShare v0.8.0 — optional stable Android release signing
 
 The **default GitHub Actions build remains a debug-signed `Android-TEST.apk`**. It requires no secrets; the runner's debug signing key can change between runs. Do not claim a debug TEST APK can always upgrade in place.
 
-The `v0.7.0` release workflow also supports a separate, **optional `Android-SIGNED.apk`** when all four GitHub Actions repository secrets are configured. Never commit a private keystore, secret, or signing password. A signed Android release can update **future APKs signed with the same original key**, the same `applicationId`, and increasing `versionCode`. The **first switch from debug TEST to signed release usually requires uninstalling the TEST app once**, so back up any needed phone-only transfer-history data first.
+The release workflow also supports a separate, **optional `Android-SIGNED.apk`** when all four GitHub Actions repository secrets are configured. Never commit a private keystore, secret, or signing password. A signed Android release can update **future APKs signed with the same original key**, the same `applicationId`, and increasing `versionCode`. The **first switch from debug TEST to signed release usually requires uninstalling the TEST app once**, so back up any needed phone-only transfer-history data first.
 
 ## One-time setup — on your trusted development PC
 

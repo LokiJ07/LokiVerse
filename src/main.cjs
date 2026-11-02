@@ -10,6 +10,7 @@ const { createFileOps } = require('./shared/fileops.cjs');
 const { dueReminders } = require('./shared/reminders.cjs');
 const { createLokiShare, listPrivateInterfaces } = require('./shared/lokishare.cjs');
 const { createDiscoveryBroadcaster } = require('./shared/discovery.cjs');
+const { folderInsights, textPreview, summaryCSV, telemetryCSV } = require('./shared/desktop-tools.cjs');
 
 // Keep this identifier, package.json build.appId, and productName stable across releases.
 // Electron's userData directory is likewise kept stable: installs preserve tasks and notes.
@@ -182,6 +183,54 @@ function registerHandlers() {
   safeHandle('files:createFolder', async (relative, name) => { if (!selectedRoot) throw new Error('Choose a folder first.'); return createFileOps(selectedRoot).createFolder(relative, name); });
   safeHandle('files:rename', async (relative, name) => { if (!selectedRoot) throw new Error('Choose a folder first.'); return createFileOps(selectedRoot).rename(relative, name); });
   safeHandle('files:copy', async (relative, destination) => { if (!selectedRoot) throw new Error('Choose a folder first.'); return createFileOps(selectedRoot).copyFile(relative, destination); });
+  safeHandle('files:insights', async () => {
+    if (!selectedRoot) throw new Error('Choose a folder first.');
+    return folderInsights(selectedRoot);
+  });
+  safeHandle('files:preview', async relative => {
+    if (!selectedRoot) throw new Error('Choose a folder first.');
+    return textPreview(selectedRoot, relative);
+  });
+  safeHandle('files:exportInsights', async () => {
+    if (!selectedRoot) throw new Error('Choose a folder first.');
+    // Recompute inside the main process instead of trusting renderer-provided file metadata.
+    const report = await folderInsights(selectedRoot);
+    const selection = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export LokiFiles storage report', defaultPath: 'LokiFiles-Storage-Report.csv',
+      filters: [{ name: 'CSV report', extensions: ['csv'] }]
+    });
+    if (selection.canceled || !selection.filePath) return { canceled: true };
+    await fs.writeFile(selection.filePath, summaryCSV(report), {encoding:'utf8',flag:'wx'}).catch(async error => {
+      if(error.code!=='EEXIST')throw error;
+      // User explicitly selected an existing filename via Windows Save dialog.
+      await fs.writeFile(selection.filePath, summaryCSV(report), 'utf8');
+    });
+    return { canceled:false, filePath:selection.filePath, partial:report.truncated };
+  });
+  safeHandle('notes:exportMarkdown', async id => {
+    if (typeof id !== 'string' || id.length > 100) throw new Error('Invalid note.');
+    await saving;
+    const note = (await readData()).notes.find(n=>n.id===id);
+    if(!note) throw new Error('Note was not found in saved workspace.');
+    const filename = (note.title || 'LokiNote').replace(/[\\/:*?"<>|\x00-\x1f]/g,'-').slice(0,60).replace(/[. ]+$/,'') || 'LokiNote';
+    const selection = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export LokiNote as Markdown', defaultPath: filename + '.md',
+      filters: [{name:'Markdown',extensions:['md']}]
+    });
+    if(selection.canceled || !selection.filePath)return {canceled:true};
+    await fs.writeFile(selection.filePath, '# '+(note.title||'Untitled note').replace(/[\r\n]/g,' ')+'\n\n'+note.body+'\n','utf8');
+    return {canceled:false,filePath:selection.filePath};
+  });
+  safeHandle('system:exportCSV', async samples => {
+    const csv = telemetryCSV(samples);
+    const selection = await dialog.showSaveDialog(mainWindow, {
+      title: 'Export SystemPulse session', defaultPath: 'SystemPulse-Session.csv',
+      filters: [{name:'CSV data',extensions:['csv']}]
+    });
+    if(selection.canceled||!selection.filePath)return {canceled:true};
+    await fs.writeFile(selection.filePath,csv,'utf8');
+    return {canceled:false,filePath:selection.filePath};
+  });
   safeHandle('files:scan', async options => {
     if (!selectedRoot) throw new Error('Choose a folder first.');
     return createFileOps(selectedRoot).scan(options);

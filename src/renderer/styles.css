@@ -146,3 +146,29 @@ body[data-accent="sunset"]{--accent:#ff8bad;--accent-soft:#ff8bad24;--accent-bri
 /* LokiFiles 3.0 metadata inspector: content never parsed until user opens it. */
 .file-inspector{margin:16px 0 0;padding:16px 18px;border:1px solid rgba(152,129,255,.28);border-radius:14px;background:rgba(84,66,147,.14);color:var(--text,#eee);line-height:1.7;overflow-wrap:anywhere}
 .file-inspector strong{display:block;font-size:15px}.file-inspector small{opacity:.74}
+
+/* LokiVerse v0.8.0 — Storage Insights, secure text preview & session analytics */
+.insights-card{background:linear-gradient(145deg,#1d2035,#131524);border:1px solid #47405d;border-radius:16px;margin:18px 0;padding:19px 21px;box-shadow:0 14px 30px #00000014}
+.insights-heading{display:flex;align-items:start;justify-content:space-between;gap:15px;margin-bottom:16px;flex-wrap:wrap}
+.insights-heading h3{font-size:19px;letter-spacing:-.4px;color:#f5f0ff;margin:8px 0 5px}
+.insights-heading p{font-size:11px;color:#a4a2b8;line-height:1.5;margin:0;overflow-wrap:anywhere}
+.insights-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px}
+.insight-row{border:1px solid #3c3951;background:#101322a6;padding:11px 13px;border-radius:10px;display:grid;grid-template-columns:1fr auto;gap:7px;font-size:12px;align-items:center}
+.insight-row strong{color:#e8ddfa;font-size:12px}.insight-row small{font-size:10px;color:#9297ae}
+.insight-row>span:last-child{font-weight:700;color:#c7bddb;font-size:10px}
+.insight-progress{height:5px;background:#38354b;border-radius:99px;overflow:hidden}
+.insight-progress>span{height:100%;display:block;background:linear-gradient(90deg,var(--accent),#4dd9cc);border-radius:99px}
+.insight-largest{margin-top:20px;padding-top:15px;border-top:1px solid #38364e;display:grid;gap:8px;font-size:12px;color:#c8c1db}
+.insight-largest>strong{margin-bottom:5px;color:#ede4ff}
+.insight-largest-row{display:flex;align-items:center;justify-content:space-between;gap:14px;padding:8px 10px;background:#ffffff05;border-radius:8px;min-width:0}
+.insight-largest-row>span:first-child{min-width:0;overflow-wrap:anywhere}.insight-largest-row>span:last-child{white-space:nowrap;color:#a9f0e7;font-weight:700}
+.insights-card>.fine-print{margin:15px 0 0;font-size:10px;line-height:1.6}
+.file-preview-panel:empty{display:none}
+.text-file-preview{max-height:370px;overflow:auto;white-space:pre-wrap;word-break:break-word;font:12px/1.7 Consolas,'Cascadia Code',monospace;color:#d5ebeb;background:#0c1220;border:1px solid #333f50;padding:16px;border-radius:10px;tab-size:2}
+.session-analytics{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px;margin:11px 0 21px;color:#b4b0c7;font-size:12px}
+.session-stat{min-width:0;background:linear-gradient(130deg,#1b2030,#161625);border:1px solid #3b3d59;border-radius:13px;padding:19px;display:grid;gap:7px}
+.session-stat>strong{color:#f2ecff;font-size:26px;font-weight:850;letter-spacing:-.5px}
+.session-stat>strong small,.session-stat>small{color:#8f93ab;font-size:11px;letter-spacing:0;font-weight:500}
+.note-export-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+@media(max-width:1100px){.session-analytics{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:900px){.session-analytics{grid-template-columns:1fr}.insights-heading{display:block}.insights-heading>.button{margin-top:13px}}

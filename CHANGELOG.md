@@ -1,5 +1,16 @@
 # Changelog
 
+## v0.8.0 — Ultimate Desktop Experience (2026-11-02)
+
+- Added LokiFiles Storage Insights with 10,000-entry/10-level bounded read-only scans, category sizes, largest files, CSV export and symlink guard.
+- Added safe text/source preview for small UTF-8 files, with HTML escaping, path-boundary checks and binary rejection.
+- Added SystemPulse session analytics (300 samples), CPU/RAM averages, peaks, reset and CSV export.
+- Added export of individual saved LokiNotes to portable Markdown `.md`.
+- Preserved all existing LokiShare transfers, HTTPS pinning, Windows installer identity and local workspace data format. Android companion versionName/code updated without changing functionality.
+- Hardened local TLS certificate serial generation against intermittent ASN.1 DER illegal-padding errors. Existing certificates are reused without rotation.
+- Extended desktop regression suite from 27 to 32 tests and smoke-tested storage preview, exports and monitor UI.
+
+
 ## v0.7.0 — Advanced Ecosystem Integration (2026-11-02)
 
 - Added HTTP byte-range support on the secure LokiShare Windows host, including ETag/If-Range verification and changed-file rejection.
