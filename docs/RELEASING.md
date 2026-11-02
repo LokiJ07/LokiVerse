@@ -1,39 +1,14 @@
-# Releasing LokiVerse v0.3.0
+# LokiVerse v0.4.0 release checklist
 
-1. Export a backup from your currently installed LokiVerse.
-2. Copy the new source code into the **existing** LokiVerse Git repository, preserving `.git`.
-3. `npm install`, then `npm run check`.
-4. `git add -A && git commit -m "feat: LokiVerse v0.3.0 LokiShare" && git push origin main`.
-5. Verify **LokiVerse Windows CI** succeeded, including the Windows installer build.
-6. `git tag v0.3.0 && git push origin v0.3.0` (do not retag an existing published tag).
-7. Verify **LokiVerse GitHub Release** passed, with `LokiVerse-0.3.0-Setup-x64.exe` and `SHA256SUMS.txt`.
-8. Close v0.2.1 (or your installed version), run the new installer **without uninstalling the old app**.
-9. Verify notes, tasks, settings, backups, and v0.3.0 UI. Test LokiShare with a Windows PC + Android phone on the same trusted private LAN.
+1. Back up existing notes/tasks in installed Windows LokiVerse.
+2. Replace source files in the SAME Git repository, keeping `.git` untouched.
+3. Run `npm run check`, then `git add -A && git commit -m "feat: v0.4.0 secure LokiShare" && git push origin main`.
+4. In GitHub Actions verify BOTH jobs passed: Windows verify-and-build AND Android companion build.
+5. Only then `git tag v0.4.0 && git push origin v0.4.0`.
+6. Watch release workflow: `windows-release` first, `android-test-release` second.
+7. Download `LokiVerse-0.4.0-Setup-x64.exe` and install it **over** the existing Windows version (no manual uninstall). Verify saved tasks/notes.
+8. Install `LokiShare-0.4.0-Android-TEST.apk` as a TEST-only APK. Do **not** promise stable APK updates: CI debug signing is not persistent between runs.
+9. Pair on the same private network using the companion QR scanner, compare six digits and approve. Test both upload and download, verify rejection of unknown devices and revoke.
+10. If Android Gradle build fails, do not publish the Android component as ready. Diagnose the Android job log and patch before tagging a new version; never move an already-published tag.
 
-## In-place upgrade invariants
-
-- Never change `appId` (`com.lokij.lokiverse`) or `productName` (`LokiVerse`).
-- Keep Windows NSIS `oneClick: true`, `perMachine: false`, and userData location unchanged.
-- GitHub Actions creates releases using its built-in `GITHUB_TOKEN`; no custom signing key. The binary is unsigned and may trigger SmartScreen.
-- GitHub Releases update checker is manual: **this application does not silently install updates**.
-
-## Windows networking checks
-
-- Use an IPv4 entry for the LAN your phone is on (typically `192.168.x.x`).
-- If Windows Defender Firewall asks, allow LokiVerse on **Private networks** only.
-- Do not allow this application on public networks. Do not forward its temporary port to the internet.
-- Router client isolation and mobile hotspot rules may prevent devices from seeing each other. Avoid VPN interference.
-- Pair only when 6-digit verification numbers match; disconnect/stop sharing after transfers.
-- HTTP on Wi-Fi does not protect file contents from network eavesdropping: trusted/private networks only.
-
-## Final manual QA
-
-- Open LokiShare; select LAN interface; Start.
-- Confirm local address, connection code and QR render.
-- On Android Chrome, use QR or type address/code; confirm 6-digit pairing on both screens.
-- Choose a receive folder, upload one file and verify bytes on disk.
-- From Windows, Add files; from Android, download and verify bytes.
-- Upload same filename twice and verify no overwrite.
-- Disconnect phone and verify further transfers are denied.
-- Stop sharing and verify the phone loses access.
-- Restart LokiVerse and verify the previous session does **not** automatically reopen.
+**Do not** publish any personal `.jks`, `.keystore`, private key, passwords, real QR pairing screenshots or API tokens.

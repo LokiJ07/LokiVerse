@@ -1,7 +1,8 @@
 'use strict';
-// LokiShare: on-demand local-network HTTP service. No cloud, no external server.
-// HTTP is NOT end-to-end encrypted: use only on a trusted private Wi-Fi network.
-const http = require('node:http');
+// LokiShare: on-demand local-network HTTPS service with a unique local TLS identity.
+// Certificates are pinned by the Android client from an out-of-band QR invitation.
+const https = require('node:https');
+const {localTLSIdentity} = require('./tls-identity.cjs');
 const os = require('node:os');
 const path = require('node:path');
 const fs = require('node:fs/promises');
@@ -49,8 +50,8 @@ function newDownloadName(name) {
   const ascii=name.replace(/[^a-zA-Z0-9._-]/g,'_').replace(/^\.+/,'file');
   return `attachment; filename="${ascii}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
-function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLIC_DIR}={}) {
-  let server=null, bindAddress=null, hostURL=null, pairCode=null, joinSecret=null, inbox=null;
+function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLIC_DIR, identityDir=path.join(os.tmpdir(),'lokishare-test-'+process.pid)}={}) {
+  let server=null, bindAddress=null, hostURL=null, pairCode=null, joinSecret=null, inbox=null, tlsFingerprint=null;
   const pending=new Map(), clients=new Map(), downloads=new Map(), transfers=[];
   const failures=new Map();
   const sockets=new Set();
@@ -63,7 +64,7 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
   }
   function status() {
     prune();
-    return { running:!!server, url:hostURL, code:pairCode, inbox,
+    return { running:!!server, url:hostURL, code:pairCode, inbox, tlsFingerprint, secure:true,
       pending:[...pending.values()].filter(p=>p.status==='pending').map(p=>({id:p.id, device:p.device, match:p.match, created:p.created})),
       clients:[...clients.values()].map(c=>({id:c.id,device:c.device,lastSeen:c.lastSeen})),
       files:[...downloads.values()].map(f=>({id:f.id,name:f.name,size:f.size})),
@@ -129,7 +130,7 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
         if(p.status!=='approved') return json(res,200,{status:'pending'});
         pending.delete(p.id);
         const secret=rand(32);clients.set(secret,{id:rand(8),device:p.device,ip:p.ip,lastSeen:clock()});changed();
-        return json(res,200,{status:'approved'}, {'Set-Cookie':`loki_session=${secret}; HttpOnly; SameSite=Strict; Path=/api; Max-Age=1800`});
+        return json(res,200,{status:'approved'}, {'Set-Cookie':`loki_session=${secret}; HttpOnly; Secure; SameSite=Strict; Path=/api; Max-Age=1800`});
       }
       if(req.method==='POST' && !sameOrigin(req)) return error(res,403,'Origin rejected.');
       const client=sessionFor(req);
@@ -189,20 +190,22 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
     const addresses=listPrivateInterfaces().map(x=>x.address);
     // Localhost allowed only for test harness; production UI must choose a private interface.
     if(!addresses.includes(address) && address!=='127.0.0.1') throw Error('Choose a connected private Wi-Fi/LAN interface.');
-    const instance=http.createServer((req,res)=>{handle(req,res).catch(()=>{if(!res.headersSent)res.end();});});
+    const identity=await localTLSIdentity(identityDir);
+    const instance=https.createServer({key:identity.key,cert:identity.cert,minVersion:'TLSv1.2'},(req,res)=>{handle(req,res).catch(()=>{if(!res.headersSent)res.end();});});
     instance.requestTimeout=5*60*1000;
     instance.headersTimeout=20000;
     instance.on('connection',socket=>{sockets.add(socket);socket.on('close',()=>sockets.delete(socket));});
     try { await new Promise((resolve,reject)=>{instance.once('error',reject);instance.listen(0,address,()=>{instance.removeListener('error',reject);resolve();});}); }
     catch(e){instance.close();throw e;}
     server=instance;bindAddress=address;
-    hostURL=`http://${address}:${server.address().port}`;
+    hostURL=`https://${address}:${server.address().port}`;
+    tlsFingerprint=identity.fingerprint;
     pairCode=code(10);joinSecret=rand(32);changed();
     return status();
   }
   async function stop() {
     if(!server) return status();
-    const old=server;server=null;hostURL=null;pairCode=null;joinSecret=null;
+    const old=server;server=null;hostURL=null;pairCode=null;joinSecret=null;tlsFingerprint=null;
     pending.clear();clients.clear();downloads.clear();transfers.splice(0);failures.clear();
     old.close();for(const socket of sockets)socket.destroy();sockets.clear();changed();
     return status();
@@ -230,7 +233,13 @@ function createLokiShare({onChange=()=>{}, clock=()=>Date.now(), publicDir=PUBLI
   }
   function removeFile(id) {downloads.delete(id);changed();return status();}
   function revoke(id) {for(const [key,value] of clients) if(value.id===id)clients.delete(key);changed();return status();}
-  function inviteURL(){return hostURL?`${hostURL}/?join=${joinSecret}`:null;}
+  function inviteURL(){
+    // Native invitation carries pinned certificate fingerprint via physical QR out-of-band.
+    // Only display on the Windows screen; NEVER send cert fingerprint from the LAN endpoint.
+    if (!hostURL) return null;
+    const query=new URLSearchParams({url:hostURL,join:joinSecret,fp:tlsFingerprint});
+    return `lokiverse://pair?${query}`;
+  }
   return {listPrivateInterfaces,status,start,stop,approve,setInbox,addFiles,removeFile,revoke,inviteURL};
 }
 module.exports={createLokiShare,listPrivateInterfaces,safeFileName,MAX_FILE};

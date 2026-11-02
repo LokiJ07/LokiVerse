@@ -6,3 +6,11 @@ dist/
 .env
 .env.*
 !README.md
+
+android-companion/.gradle/
+android-companion/.idea/
+android-companion/local.properties
+android-companion/**/build/
+*.apk
+*.jks
+*.keystore

@@ -24,7 +24,7 @@ let closeTimeout = null;
 const notifiedTasks = new Set();
 let reminderBusy = false;
 let remindersLoaded = false;
-const lokiShare = createLokiShare({onChange: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('share:changed'); }});
+const lokiShare = createLokiShare({identityDir: path.join(app.getPath('userData'),'share-security'), onChange: () => { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('share:changed'); }});
 
 function dataFile() { return path.join(app.getPath('userData'), 'lokiverse-data.json'); }
 function storage() { return createStorage(dataFile()); }
@@ -197,7 +197,7 @@ function registerHandlers() {
       cpu: usage, memoryTotal: os.totalmem(), memoryUsed: os.totalmem() - os.freemem(),
       uptime: os.uptime(), platform: `${os.type()} ${os.release()}`, hostname: os.hostname(), disk };
   });
-  // Explicitly activated LAN sharing; never expose general filesystem operations over HTTP.
+  // Explicitly activated LAN sharing; never expose general filesystem operations over HTTPS.
   safeHandle('share:interfaces', () => listPrivateInterfaces());
   safeHandle('share:status', () => lokiShare.status());
   safeHandle('share:start', address => {

@@ -1,110 +1,84 @@
-<div align="center">
+# 💜 LokiVerse v0.4.0 — Secure LokiShare + Android Companion
 
-# ✦ LokiVerse
+**LokiVerse** is an offline-first Windows desktop productivity hub (Tasks, Notes, Files, SystemPulse) with local Wi-Fi transfer functionality. v0.4.0 adds encrypted transport and the source for a native Android LokiShare companion. MIT license.
 
-**Your universe. Your tools. Your rules.**
+## What's new
 
-Windows 10/11 desktop workspace • Offline-first • Free and open-source
+- Windows LokiShare now serves **HTTPS**, not cleartext HTTP.
+- A fresh self-signed TLS identity is generated locally on the PC at first start and retained across Windows upgrades. **The private key never goes to GitHub or the phone.**
+- The desktop QR contains a `lokiverse://pair` invitation with the local HTTPS URL, random join secret and certificate SHA-256 fingerprint.
+- Native Java Android companion: scan the PC QR, verify the pinned TLS certificate, request pairing, compare the same six-digit code on both screens, and transfer files in both directions through Android's document pickers.
+- Transfers still require explicit Windows approval and file/folder selection, are limited to **512 MiB per file**, and never automatically overwrite a local PC file.
+- Prior tasks, notes, settings, `com.lokij.lokiverse` application ID and NSIS upgrade identity remain intact.
+- GitHub Actions builds **Windows installer + Android TEST debug APK**. No custom signing secret is needed **for these test builds**, but the Android test APK is **not suitable as a stable public-update channel**.
 
-![LokiVerse icon](assets/icon.png)
+## Important Android signing distinction
 
-[![Windows CI](https://github.com/LokiJ07/LokiVerse/actions/workflows/ci.yml/badge.svg)](https://github.com/LokiJ07/LokiVerse/actions/workflows/ci.yml)
+**Windows:** Same NSIS identity means the v0.4.0 installer can update v0.3.0 without manually uninstalling it; signing secrets are not required to build an *unsigned* Windows installer (Windows SmartScreen may show a warning).
 
-</div>
+**Android:** Each GitHub Actions runner generates its own **debug signing certificate**; a future runner's APK cannot necessarily update the previously installed one. **Do not publish the debug APK as a stable release** or promise in-place Android updates. True no-uninstall upgrades require a permanently backed-up private Android release-signing keystore, used securely for every subsequent release (generally stored as GitHub encrypted secrets or a protected signing service). **Never commit a signing keystore or password to a public repository.** The test APK's app ID is `com.lokij.lokishare` and is separate from Windows LokiVerse.
 
-## 💜 v0.3.0 — LokiShare (first working version)
+## 📲 Pairing instructions (Windows + Android)
 
-**NEW: send files between your Windows PC and an Android phone using the same private Wi-Fi network, without cloud storage.** The phone opens a responsive local web interface in Chrome; **there is no separate Android APK in v0.3.0**.
+1. Update your Windows LokiVerse to v0.4.0 using the `LokiVerse-0.4.0-Setup-x64.exe` installer. Back up your notes/tasks first.
+2. On your Android 8.0+ device, install the **v0.4.0 Android TEST APK** from the GitHub release or the Android CI artifact. Use only APKs built from your own repository. Android may require enabling installation from your browser/files app.
+3. Connect both devices to the same **trusted private Wi-Fi**. Open Windows **LokiShare**, choose the Wi-Fi interface and click **Start sharing**. Use **Choose receive folder** to enable incoming files.
+4. Open **LokiShare** on Android and tap **Scan pairing QR**. Scan the purple QR displayed in the Windows app. The Android app validates the invitation format and pins the TLS certificate fingerprint encoded in the QR. **Use the Android companion scanner, not your standard browser QR scanner.**
+5. Tap **Request secure pairing** on Android. Compare the six-digit number with the one on the Windows pairing request. Click **Approve** on Windows **only if they match**.
+6. To send phone → PC, tap **Select files to send** in the app and pick files. They save only to your selected receive folder (existing files are not overwritten).
+7. To send PC → phone, click **Add files to share** on Windows, then tap **Refresh shared files** on Android and choose a destination using the Android Save As dialog.
+8. Use **Disconnect** or **Stop sharing** on Windows to revoke access.
 
-| Module | What works |
-|---|---|
-| Overview | Dashboard, task summary, shortcuts |
-| My Tasks | Categories, deadlines, priorities, local reminders while the app runs |
-| LokiNotes | Markdown preview, folders, pinned notes, autosave |
-| LokiFiles | Browse chosen folders, scoped search, duplicates, create and rename |
-| SystemPulse | CPU/RAM graphs and disk information |
-| **LokiShare** | Temporary LAN host, browser pairing, PC approval, 6-digit matching, QR/link, phone↔PC file transfer, live progress, file scope and disconnect |
-| Settings | Themes, backup/restore, GitHub Release checker |
+**Prior Chrome compatibility:** The previous browser companion is still served at the local `https://...` URL, but standard phone browsers do **not** trust a locally generated self-signed certificate automatically. Prefer the native Android companion. Do not bypass certificate warnings for unfamiliar devices or networks.
 
-### How LokiShare works
+No internet connection is needed for *local transfers*. Initial APK installation/dependency downloads can require internet. No public Wi-Fi, cross-network relay, cloud sync, automatic discovery or end-to-end cryptography independent of the PC is claimed: transfers are encrypted **between the Android client and Windows host** using HTTPS with certificate pinning.
 
-1. Windows: Open LokiVerse → **LokiShare**. Choose the Wi-Fi or Ethernet IPv4 address (e.g. `192.168.1.5`) and click **Start sharing**. The phone and Windows computer must be on the same **private** LAN. If Windows Firewall asks, permit **Private networks only**.
-2. Windows: To receive files, click **Choose receive folder**. To send files, click **Add files to share**. Only selected files can be downloaded; phone uploads go only into the chosen receive folder.
-3. Android: Use the camera to scan the QR, **or** enter the displayed `http://...` address in Chrome and type the **10-character connection code** shown on Windows. The QR embeds a random one-session invite token.
-4. Android: Tap **Request pairing** and look at the **6-digit verification number**. Windows: approve **only if the number matches**.
-5. Android: **Choose files to send → Send**, or use **Save** beside the files explicitly shared by Windows. Transfers stay local; internet is not necessary.
-6. Windows: View **Live activity**, disconnect devices individually or click **Stop sharing** to immediately terminate the session. Your workspace tasks and notes are never shared through this feature.
+## Developer commands
 
-**Important security limitation:** v0.3.0 uses plain **HTTP** over the local Wi-Fi network. Pairing approval, random session credentials, input validation, and file selection restrict access, **but file contents are NOT encrypted in transit**. Use on **trusted private Wi-Fi only**; do not use shared/public/hotel Wi-Fi or send confidential files. A future release may add end-to-end encrypted transfers. Devices on different guest networks, client-isolated Wi-Fi, VPNs or blocked Windows Firewall settings may not connect.
-
-**Limits:** 512 MiB per file. Browser uploads use file selection (no access to arbitrary Android directories). Downloads are limited to files explicitly selected by the Windows user. An incoming filename is validated and renamed if needed to avoid overwriting another file. Paired-device sessions expire after inactivity, and a Stop immediately revokes them. No cloud account, telemetry, or remote relay.
-
-## 📦 Run locally
-
-Requirements for development: Node.js 22+, internet for the initial `npm install` of Electron / QR code dependencies. Internet is **not required for local file sharing** after setup.
+From the **Windows project root**:
 
 ```bash
 npm install
 npm run check
-npm start
+npm run start
 ```
 
-Build an installer on Windows:
+From `android-companion` (Android Studio can open this folder directly; Gradle must be installed if running via CLI):
 
 ```bash
-npm run dist:win
+gradle --no-daemon :app:assembleDebug
 ```
 
-## 🤖 Upgrade an existing LokiVerse repository and installation
+Android build tooling: JDK 17, Android Gradle Plugin 8.9.2, Gradle 8.11.1, SDK 35, ZXing Android Embedded 4.3.0. GitHub Actions installs the build tools automatically.
 
-**Do not run `git init` or create a new GitHub repository.** If you currently have v0.2.1 installed:
+## Publish through the existing repository
 
-1. Export your workspace backup from LokiVerse → Settings → Export.
-2. Extract `LokiVerse-v0.3.0-Source.zip`. Copy **all files and folders**, including `.github` and the new `src/share-web`, into your existing local `LokiVerse` Git repository. Keep `.git` untouched.
-3. Open Git Bash inside the existing repository:
+Copy the ZIP's contents into your current `LokiVerse` Git checkout, **including `.github` and `android-companion`**, and do not delete `.git`. Then:
 
 ```bash
-npm install
-npm run check
 git add -A
-git commit -m "feat: LokiVerse v0.3.0 LokiShare local transfer"
+git commit -m "feat: LokiVerse v0.4.0 secure LokiShare and Android companion"
 git push origin main
 ```
 
-4. Wait until **LokiVerse Windows CI** succeeds in GitHub Actions.
-5. **Only after a green CI run**, create the new tag:
+Wait for **both** `verify-and-build` (Windows) and `android-companion` (Android) CI jobs to pass. **Do not tag if either fails.** Then:
 
 ```bash
-git tag v0.3.0
-git push origin v0.3.0
+git tag v0.4.0
+git push origin v0.4.0
 ```
 
-6. Wait until **LokiVerse GitHub Release** succeeds and download **`LokiVerse-0.3.0-Setup-x64.exe`** from the release assets.
-7. Close the existing LokiVerse app. **Run the installer over your existing version; do not manually uninstall it.** Confirm the version, notes, tasks and settings are preserved.
+The release workflow publishes `LokiVerse-0.4.0-Setup-x64.exe`, `SHA256SUMS.txt` and (when its separate Android job succeeds) `LokiShare-0.4.0-Android-TEST.apk` + its checksum. An **Android APK build has not been executed in this generation environment**: GitHub Actions will perform the first real Android compilation. The HTTPS backend tests passed locally, but physical device testing must still be done.
 
-The release workflow uses the repository-provided `GITHUB_TOKEN` and creates SHA256 checksums automatically. **No custom signing secret is required** for an unsigned NSIS release. Windows SmartScreen may warn about unsigned software. Check that the installer is from the official repository and verify its SHA256 checksum.
+## Architecture
 
-### Why upgrades preserve data
+| Module | Technology |
+|---|---|
+| Desktop | Electron, Node.js, plain JavaScript/CSS |
+| Local storage | Per-user JSON with recovery/backup protection |
+| File sharing server | Node.js HTTPS, locally generated X.509 RSA certificate |
+| Secure invitation | QR-based HTTPS URL + random one-time join secret + SHA-256 certificate fingerprint |
+| Android | Java 17, Android SDK, ZXing offline QR scanner, `HttpsURLConnection` pinning, Storage Access Framework |
+| CI/CD | GitHub Actions, electron-builder NSIS, Android Gradle Plugin |
 
-The app retains `build.appId = com.lokij.lokiverse`, `productName = LokiVerse`, the same NSIS per-user install mode, and the same `app.getPath('userData')` storage. **Never change these identifiers between releases.** Local data compatibility and storage recovery tests remain in the test suite. As always, test your Windows installer before announcing it to other users.
-
-## 🧪 Tests
-
-- `npm run check`: JavaScript syntax and Node test suite, including a real HTTP LAN pairing/upload/download simulation on loopback.
-- Browser interface smoke tests were conducted with mocked desktop/browser APIs; Windows compilation, firewall access, QR rendering with the packaged dependency, and Android hardware transfer require real-world verification.
-- No encrypted transport, automatic updates, automatic Android discovery, or native Android APK is claimed for v0.3.0.
-
-## 🛡️ Privacy & safety
-
-- Notes, tasks and settings stay on the computer unless explicitly exported; LokiShare does **not** expose the workspace backup or arbitrary PC directories.
-- LokiShare is off by default and binds only to the selected local IPv4 interface when started.
-- The phone must present a one-session connection code/QR token and receive approval on the PC.
-- Uploaded files are bounded in size, filenames are restricted, and existing files are never overwritten.
-- The temporary HTTP service has no encryption. Do not share on networks you do not control. Stop sharing when finished.
-- The desktop UI uses Electron `contextIsolation`, sandboxed renderer and a narrow IPC bridge. JSON backups are plain text and should be protected separately.
-
-## Stack & licensing
-
-Electron • Node.js • Vanilla HTML/CSS/JS • npm `qrcode` • Windows NSIS • GitHub Actions / Releases
-
-MIT License © 2026 LokiJ
+**Security notes:** See [`docs/LOKISHARE.md`](docs/LOKISHARE.md). Certificate private key is stored under Windows app userData `share-security/`, **not** in the GitHub source. The QR invitation is a temporary secret; do not post a screenshot of your live pairing QR publicly. Because v0.3.0 used HTTP, it cannot connect securely to a v0.4.0 server; update Windows first and use the new Android companion.
