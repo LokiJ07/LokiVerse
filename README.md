@@ -4,67 +4,33 @@
 
 **Your universe. Your tools. Your rules.**
 
-Windows 10/11 (64-bit) · Electron desktop app · Offline-first · MIT licensed
+Windows desktop creator workspace · Offline-first · Open-source · Midnight Aurora design
 
-![LokiVerse](assets/icon.png)
+![LokiVerse logo](assets/icon.png)
 
 [![Windows CI](https://github.com/LokiJ07/LokiVerse/actions/workflows/ci.yml/badge.svg)](https://github.com/LokiJ07/LokiVerse/actions/workflows/ci.yml)
 
 </div>
 
-## ✨ v0.2.0 — Productivity Expansion
+## ✨ LokiVerse v0.1.1 — UI & Stability Update
 
-This release extends the **existing working v0.1.1**. The app continues to save workspace data on your computer, with no user login or cloud account. All persistent workspace data is normalized with backward-compatible defaults on load.
+LokiVerse is a real Windows desktop app, not a hosted website. All your notes and tasks are stored locally on your computer.
 
-| Feature | Included in v0.2.0 |
-|---|---|
-| Overview | Task completion progress, at-a-glance totals, quick launch and upcoming tasks |
-| LokiTasks 2.0 | Categories, priorities, due dates & times, active/completed/overdue filters, task editing, desktop reminders while app is running |
-| LokiNotes 2.0 | Note folders, pinning, search, Markdown editing toolbar, **safe Markdown preview**, autosave, word count |
-| LokiFiles 2.0 | Browse, search within selected root (recursive), type filtering and sorting, SHA-256 duplicate detection, create folder and rename file/folder |
-| SystemPulse 2.0 | Sampled live CPU/RAM trends, uptime and computer details, free/total space of user's drive |
-| UI & Settings | Midnight Aurora UI, 3 accent choices, compact-mode toggle, Ctrl+K search, local save indicator |
-| Data safety | Backup export/restore, last-known-good recovery, same v0.1.x user-data folder, stricter IPC filesystem scope |
-| LokiShare | 🚧 Planned for a later release. **Not implemented yet.** |
+| Module | Included today? | Features |
+| --- | --- | --- |
+| Overview | ✅ | At-a-glance metrics, task progress, pending tasks, quick launch |
+| My Tasks | ✅ | Add, prioritize, set deadlines, complete, delete |
+| LokiNotes | ✅ | Create, edit, search, delete, automatic local saving, word count |
+| LokiFiles | ✅ | Choose a folder, browse, open files, reveal in Explorer. **Read-only** |
+| SystemPulse | ✅ | CPU utilization estimate, RAM usage, device details |
+| Settings | ✅ | Display name, theme accent, export/restore backup, check GitHub Releases |
+| LokiShare | 🚧 Planned | Android↔Windows transfer; **not implemented** yet |
 
-### Boundaries worth knowing
+> v0.1.1 builds on the tested v0.1.0 design. Source-level tests and browser UI smoke tests passed in the development environment; Windows upgrade validation is still required.
 
-- **Task notifications:** Windows desktop reminders only work **while LokiVerse is running**. The app polls roughly once per minute and notifies for tasks due within the previous 24 hours. If no time is chosen, the default is 9:00 AM local time. Reminders can be disabled in Settings. These are **not background notifications after the app has been closed**.
-- **LokiNotes:** Formatting uses **Markdown source + preview**, not a full WYSIWYG word processor. HTML, active hyperlinks and images are intentionally not rendered in preview.
-- **LokiFiles:** Operations are confined to the root folder you select. The recursive scan skips symlinks, has a cap of 10,000 entries and 10 folder levels, and shows up to 1,000 search matches. Duplicate checks examine only files up to 100 MB each and hash at most 150 potential matches. **Duplicate detection does not delete files.** Rename refuses to overwrite an existing item. The file browser still delegates file opening to Windows on explicit clicks.
-- **SystemPulse:** CPU usage is estimated from OS counters, RAM and disk free-space figures come from the OS. GPU/CPU temperatures, disk SMART health and every attached drive are **not** supported.
-- **Updates:** "Check Updates" checks public GitHub Releases. To upgrade, manually download and run the new unsigned Windows installer; background automatic installation is **not** implemented.
+## 📦 Setup on Windows
 
-## ⬆️ Upgrade from v0.1.1 without uninstalling
-
-1. On your current LokiVerse v0.1.1, use **Settings → Export** to make a backup in a safe folder.
-2. Copy **contents** of this source into your existing local `LokiVerse` Git repository, replacing old source files and `.github` workflows. **Never delete the `.git` folder.** Do not copy over a locally installed app's data folder.
-3. From that existing repository, run:
-
-```bash
-git add -A
-git commit -m "feat: LokiVerse v0.2.0 productivity expansion"
-git push origin main
-```
-
-4. Confirm **GitHub Actions → LokiVerse Windows CI** is green.
-5. Tag the release **only after CI is green**:
-
-```bash
-git tag v0.2.0
-git push origin v0.2.0
-```
-
-6. Wait for **GitHub Actions → LokiVerse GitHub Release** to finish. Go to Releases and get `LokiVerse-0.2.0-Setup-x64.exe`.
-7. Close v0.1.1 and run the installer **without uninstalling** the old one. Verify Settings shows v0.2.0 and that old notes/tasks remain. See [`docs/RELEASING.md`](docs/RELEASING.md) and [`docs/QA.md`](docs/QA.md).
-
-### Why no custom signing secret?
-
-The installer is a Windows **NSIS** per-user installer with the same `appId` (`com.lokij.lokiverse`), productName (`LokiVerse`) and installer configuration as v0.1.x. A custom GitHub secret/Android keystore is **not required to build**. Windows SmartScreen may warn because the binary is **not code signed**. The project uses the built-in `GITHUB_TOKEN` with `contents: write` to publish GitHub Releases. This is different from Android's APK signature requirements.
-
-## 🛠️ Development
-
-Prerequisites: Node.js 22+, npm, Windows for local Windows installer compilation.
+Required: Node.js 22+, Git, and an internet connection for npm (only to install development dependencies).
 
 ```bash
 npm install
@@ -72,25 +38,117 @@ npm run check
 npm start
 ```
 
-To build on Windows (or let the GitHub Action build it):
+Build the Windows installer **locally on Windows**:
 
 ```bash
 npm run dist:win
 ```
 
-The `.exe` is generated in the `release/` directory.
+The resulting `.exe` should be under `release/`.
 
-## 🔐 Privacy & security notes
+## 🤖 GitHub Actions — build & release (no custom secrets)
 
-- Electron renderer: context isolation on, sandbox enabled, node integration disabled, strict preload bridge.
-- LokiFiles scans are bounded and skip symlink entries; root escape attempts are rejected.
-- Rename and folder creation are user-initiated and do not silently delete anything.
-- Data writes are serialized, normalized and use atomic temporary files with a last-known-good backup for recovery.
-- GitHub requests are limited to checking the newest public release; no analytics or cloud sync.
+> The following section describes creating a brand-new repository only. Existing v0.1.0 users should follow the **upgrade instructions above** instead.
 
-## 🗓️ Roadmap
+1. **Create a public empty GitHub repository named `LokiVerse`** under the **`LokiJ07`** account. Do not initialize the remote with README or license (both are included here).
+2. Open Git Bash or VS Code terminal in the **LokiVerse** project folder.
+3. Run:
 
-- **v0.3.x:** LokiShare pairing and LAN transfer proof of concept (future scope, not shipped).
-- More flexible note formatting, stronger search, optional safe file operations and richer system telemetry (not promised in v0.2.0).
+```bash
+git init
+git add .
+git commit -m "feat: LokiVerse Creator Edition v0.1.0"
+git branch -M main
+git remote add origin https://github.com/LokiJ07/LokiVerse.git
+git push -u origin main
+```
 
-Made by **LokiJ** · MIT License.
+4. Go to **Actions → LokiVerse Windows CI**. Pushes to `main` will run tests, build the Windows installer, and upload a 7-day workflow artifact.
+5. To **publish an official public release**, use:
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+6. Go to **Actions → LokiVerse GitHub Release**. When it succeeds, see **Releases** in the repository. Download `LokiVerse-0.1.0-Setup-x64.exe` from that release.
+
+The release workflow uses GitHub's **automatic `GITHUB_TOKEN`**, not a manually configured GitHub repository secret. Under repo **Settings → Actions → General**, make sure Actions are enabled. The release workflow explicitly requests `contents: write`.
+
+**If your GitHub username or repository name differs**, update `RELEASE_REPOSITORY` in `src/main.cjs`, the repository links in this file, and your git remote **before publishing v0.1.0**, otherwise the app's update checker will look at the wrong repo.
+
+## 🔥 Upgrade your existing v0.1.0 installation to v0.1.1
+
+**You already have a Git repository and v0.1.0 installed. Do NOT initialize a new repository.**
+
+1. **Before upgrading**, in LokiVerse v0.1.1 go to Settings → Export, and keep an external JSON backup.
+2. Extract the v0.1.1 source ZIP. Copy the **contents** of its `LokiVerse-v0.1.1` directory into your current local `LokiVerse` Git repository folder, replacing files when asked. Do not overwrite/delete your `.git` folder.
+3. In Git Bash, opened in the existing repository:
+
+```bash
+npm run check   # if dependencies are already installed; otherwise npm install first
+git add -A
+git commit -m "feat: LokiVerse v0.1.1 UI and stability"
+git push origin main
+```
+
+4. Check GitHub Actions → LokiVerse Windows CI. When green, publish the new version:
+
+```bash
+git tag v0.1.1
+git push origin v0.1.1
+```
+
+5. Check GitHub Releases → v0.1.1 and download `LokiVerse-0.1.1-Setup-x64.exe`.
+6. **Close v0.1.0 and run the new installer over it. Do not manually uninstall v0.1.0.** Launch LokiVerse and verify that your tasks and notes survived, that Settings says `v0.1.1`, and that Ctrl+K works.
+
+See [CHANGELOG.md](CHANGELOG.md) and [docs/RELEASING.md](docs/RELEASING.md).
+
+## 🔁 Release new versions without uninstalling the old version
+
+LokiVerse uses a per-user NSIS Windows installer. Upgrades rely on these **stable values**:
+
+- `build.appId`: `com.lokij.lokiverse` — **never change** once released.
+- `productName`: `LokiVerse` — keep consistent.
+- Windows NSIS target and per-user install mode — keep consistent.
+- Electron user data location (typically `%APPDATA%\LokiVerse`) — keep consistent.
+- The `package.json` version must increase on each release.
+
+**Example later upgrade to v0.2.0:**
+
+1. Make changes, then change `"version": "0.1.0"` to `"version": "0.2.0"` in `package.json`.
+2. Commit and push changes to `main`.
+3. Run `git tag v0.2.0` and `git push origin v0.2.0`.
+4. Download the new setup `.exe` from the corresponding GitHub Release.
+5. **Close LokiVerse and run the new installer. Do not manually uninstall the old version.** The existing installation should be upgraded while keeping your user data.
+6. Open LokiVerse → Settings → Version & updates, verify that it shows v0.2.0 and that existing notes/tasks remain.
+
+The built-in update checker fetches the latest **public** stable GitHub Release and helps you open the official release page. It **does not** silently download or install executables. For now, manually run the newest setup file. See [docs/RELEASING.md](docs/RELEASING.md) for the detailed checklist.
+
+**Important:** This Windows NSIS workflow is different from Android APK signing. If an Android signing key was lost, Windows installer configuration cannot repair the Android signature mismatch. An unsigned Windows app may also show a **Windows SmartScreen / Unknown Publisher** warning. Do not bypass warnings on unexpected downloads; verify the release source and SHA256 hash.
+
+## 🔐 Privacy, permissions and safety
+
+- LokiVerse v0.1.1 does not transmit task or note contents to any server.
+- GitHub API access occurs only after you ask to check for updates.
+- LokiFiles shows files only within a folder selected by the user; it does not delete, move, or rewrite them. Symbolic links pointing outside the selected root are blocked.
+- UI content is escaped to avoid HTML injection, and `contextIsolation`, `sandbox`, and a narrow preload bridge are enabled.
+- JSON backups are human-readable files, not encrypted. Keep exports in a safe location.
+- App data is not deleted during normal version upgrades. Nevertheless, always export a backup before testing a new release.
+
+## 🧱 Tech stack
+
+Electron 45 · Node.js · Vanilla JavaScript · CSS · Windows NSIS · GitHub Actions · GitHub Releases
+
+## 🛠️ Developer scripts
+
+| Command | Action |
+| --- | --- |
+| `npm start` | Run the desktop app |
+| `npm run check` | Validate JS syntax and run automated unit tests |
+| `npm run dist:win` | Build a Windows `.exe` installer (on Windows) |
+| `npm run pack:win` | Build unpacked app directory (on Windows) |
+
+## 📄 License
+
+MIT License · © 2026 LokiJ

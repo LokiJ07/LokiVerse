@@ -12,11 +12,21 @@ function validName(name) {
 }
 async function resolveInside(root, relative = '') {
   if(typeof relative !== 'string' || relative.length > 4096) throw Error('Invalid path.');
-  const candidate=path.resolve(root,relative);
-  if(!isWithinFolder(root,candidate)) throw Error('Outside selected folder.');
-  const real=await fs.realpath(candidate);
-  if(!isWithinFolder(root,real)) throw Error('Link escapes selected folder.');
-  return real;
+  // Enforce the user's *lexical* folder boundary before following any links.
+  // This deliberately rejects ../ even if a link could point back inside.
+  const selected=path.resolve(root);
+  const candidate=path.resolve(selected,relative);
+  if(!isWithinFolder(selected,candidate)) throw Error('Outside selected folder.');
+
+  // Windows temp directories and user-selected folders can contain junctions,
+  // links, or alternate spellings. Compare physical paths with physical paths:
+  // comparing fs.realpath(candidate) against a non-canonical root incorrectly
+  // reports even the selected root itself as a link escape on some machines.
+  const [canonicalRoot, canonicalTarget]=await Promise.all([
+    fs.realpath(selected),fs.realpath(candidate)
+  ]);
+  if(!isWithinFolder(canonicalRoot,canonicalTarget)) throw Error('Link escapes selected folder.');
+  return canonicalTarget;
 }
 function createFileOps(root) {
   async function folder(parent) {
@@ -28,19 +38,20 @@ function createFileOps(root) {
     if(!validName(name)) throw Error('Invalid folder name.');
     const parent=await folder(relative);
     const target=path.join(parent,name);
-    if(!isWithinFolder(root,target)) throw Error('Invalid path.');
+    if(!isWithinFolder(await fs.realpath(root),target)) throw Error('Invalid path.');
     await fs.mkdir(target);
     return { name };
   }
   async function rename(relative, name) {
     if(!validName(name)) throw Error('Invalid new name.');
-    const existing=path.resolve(root,relative);
-    if(!isWithinFolder(root,existing) || existing===root) throw Error('Cannot rename selected root.');
-    const stat=await fs.lstat(existing);
+    const selected=path.resolve(root);
+    const requested=path.resolve(selected,relative);
+    if(!isWithinFolder(selected,requested) || requested===selected) throw Error('Cannot rename selected root.');
+    const stat=await fs.lstat(requested);
     if(stat.isSymbolicLink()) throw Error('Renaming links is disabled.');
-    await resolveInside(root,relative);
+    const existing=await resolveInside(selected,relative);
     const target=path.join(path.dirname(existing),name);
-    if(!isWithinFolder(root,target)) throw Error('Invalid destination.');
+    if(!isWithinFolder(await fs.realpath(selected),target)) throw Error('Invalid destination.');
     // Never overwrite existing files, including symlinks. Windows rename is not no-replace by itself.
     try { await fs.lstat(target); throw Error('A file or folder with that name exists.'); }
     catch(err) { if(err.code!=='ENOENT') throw err; }
@@ -50,7 +61,9 @@ function createFileOps(root) {
   async function scan({ query='', duplicates=false }={}) {
     if(typeof query !== 'string' || query.length > 120) throw Error('Search is too long.');
     const term=query.trim().toLowerCase();
-    const stack=[{absolute:root,depth:0}];
+    // Start recursion from the same canonical root used by path validation.
+    const scanRoot=await fs.realpath(root);
+    const stack=[{absolute:scanRoot,depth:0}];
     let scanned=0, skipped=0, truncated=false;
     const matches=[], candidates=[];
     while(stack.length) {
@@ -64,7 +77,7 @@ function createFileOps(root) {
         scanned++;
         if(item.isSymbolicLink()) { skipped++;continue; } // do not follow links/junction-like entries
         const full=path.join(absolute,item.name);
-        const relative=path.relative(root,full);
+        const relative=path.relative(scanRoot,full);
         const directory=item.isDirectory();
         if(!directory && !item.isFile()) { skipped++;continue; }
         let st;try{st=await fs.stat(full);}catch{skipped++;continue;}
@@ -84,7 +97,7 @@ function createFileOps(root) {
     for(const item of possible) {
       try {
         const digest=await new Promise((resolve,reject)=>{
-          const hash=crypto.createHash('sha256');const stream=fsSync.createReadStream(path.join(root,item.relative));
+          const hash=crypto.createHash('sha256');const stream=fsSync.createReadStream(path.join(scanRoot,item.relative));
           stream.on('data',chunk=>hash.update(chunk));stream.on('error',reject);stream.on('end',()=>resolve(hash.digest('hex')));
         });
         hashed++;

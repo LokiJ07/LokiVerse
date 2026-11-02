@@ -44,6 +44,48 @@ test('directory operations prevent traversal, overwrite and invalid Windows name
  await assert.rejects(resolveInside(root,'../'),/Outside selected folder/);
  assert.equal(validName('valid.txt'),true);
 });
+test('lexical traversal is rejected before canonical/symlink checks',async t=>{
+ const root=await fs.mkdtemp(path.join(os.tmpdir(),'lokiverse-traversal-'));
+ t.after(()=>fs.rm(root,{recursive:true,force:true}));
+ assert.equal(await resolveInside(root,''),await fs.realpath(root));
+ await assert.rejects(resolveInside(root,'../'),/Outside selected folder/);
+ await assert.rejects(resolveInside(root,path.join('..','missing-file')),/Outside selected folder/);
+});
+
+test('a linked/junction selected root works, but links escaping it are denied',async t=>{
+ const tmp=await fs.mkdtemp(path.join(os.tmpdir(),'lokiverse-alias-'));
+ t.after(()=>fs.rm(tmp,{recursive:true,force:true}));
+ const physicalRoot=path.join(tmp,'actual');
+ const aliasRoot=path.join(tmp,'alias');
+ const outside=path.join(tmp,'outside');
+ await fs.mkdir(physicalRoot);
+ await fs.mkdir(outside);
+ // Windows junctions do not require elevated symlink permissions.
+ const kind=process.platform==='win32'?'junction':'dir';
+ try { await fs.symlink(physicalRoot,aliasRoot,kind); }
+ catch(err) {
+   if(['EPERM','EACCES','ENOTSUP','EOPNOTSUPP'].includes(err.code)) { t.skip(`Links unavailable: ${err.code}`);return; }
+   throw err;
+ }
+ assert.equal(await resolveInside(aliasRoot,''),await fs.realpath(physicalRoot));
+ const ops=createFileOps(aliasRoot);
+ await ops.createFolder('','Docs');
+ await fs.writeFile(path.join(physicalRoot,'Docs','note.txt'),'hello');
+ assert.equal((await ops.scan({query:'note'})).results[0].relative,path.join('Docs','note.txt'));
+ await ops.rename('Docs/note.txt','updated.txt');
+ assert.equal(await fs.readFile(path.join(physicalRoot,'Docs','updated.txt'),'utf8'),'hello');
+ await assert.rejects(resolveInside(aliasRoot,'../'),/Outside selected folder/);
+ const escape=path.join(physicalRoot,'escape');
+ try { await fs.symlink(outside,escape,kind); }
+ catch(err) {
+   if(['EPERM','EACCES','ENOTSUP','EOPNOTSUPP'].includes(err.code)) { t.diagnostic(`Escape-link test unavailable: ${err.code}`);return; }
+   throw err;
+ }
+ await assert.rejects(resolveInside(aliasRoot,'escape'),/Link escapes selected folder/);
+ await assert.rejects(ops.createFolder('escape','Unsafe'),/Link escapes selected folder/);
+ assert.deepEqual(await fs.readdir(outside),[]);
+});
+
 test('recursive search and sha256 duplicate grouping are bounded and read-only',async t=>{
  const root=await fs.mkdtemp(path.join(os.tmpdir(),'lokiverse-search-'));
  t.after(()=>fs.rm(root,{recursive:true,force:true}));
